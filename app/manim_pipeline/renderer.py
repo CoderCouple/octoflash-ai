@@ -555,20 +555,17 @@ def _apply_watermark(video_path: Path, resolution: str = "1920x1080") -> Path:
     """
     width, height = [int(x) for x in resolution.split("x")]
     parent = video_path.parent
-    intro_img = parent / "_wm_intro.png"
     outro_img = parent / "_wm_outro.png"
-    intro_clip = parent / "_wm_intro.mp4"
     outro_clip = parent / "_wm_outro.mp4"
     concat_list = parent / "_wm_concat.txt"
     output_path = parent / f"wm_{video_path.name}"
 
     try:
-        # Create watermark images with Pillow
-        _create_watermark_image(width, height, "OCTOFLASH", "AI-Powered Visual Learning", intro_img)
+        # Create outro watermark image only (no intro — hook viewers immediately)
         _create_watermark_image(width, height, "OCTOFLASH", "Like & Subscribe", outro_img)
 
-        # Convert images to 3-second video clips with fade in/out
-        for img_path, clip_path in [(intro_img, intro_clip), (outro_img, outro_clip)]:
+        # Convert image to 3-second video clip with fade in/out
+        for img_path, clip_path in [(outro_img, outro_clip)]:
             subprocess.run(
                 ["ffmpeg", "-y",
                  "-loop", "1", "-i", str(img_path),
@@ -581,7 +578,7 @@ def _apply_watermark(video_path: Path, resolution: str = "1920x1080") -> Path:
                 capture_output=True, text=True, timeout=30,
             )
 
-        if not intro_clip.exists() or not outro_clip.exists():
+        if not outro_clip.exists():
             logger.warning("Watermark clip creation failed, skipping watermark")
             return video_path
 
@@ -606,9 +603,8 @@ def _apply_watermark(video_path: Path, resolution: str = "1920x1080") -> Path:
                 video_path.unlink()
                 main_with_audio.rename(video_path)
 
-        # Write concat list (use absolute paths)
+        # Write concat list — outro only (no intro, hook viewers immediately)
         concat_list.write_text(
-            f"file '{intro_clip.resolve()}'\n"
             f"file '{video_path.resolve()}'\n"
             f"file '{outro_clip.resolve()}'\n"
         )
@@ -648,7 +644,7 @@ def _apply_watermark(video_path: Path, resolution: str = "1920x1080") -> Path:
     finally:
         # Clean up temp files
         main_with_audio = parent / "_wm_main.mp4"
-        for f in [intro_img, outro_img, intro_clip, outro_clip, concat_list, output_path, main_with_audio]:
+        for f in [outro_img, outro_clip, concat_list, output_path, main_with_audio]:
             if f.exists():
                 f.unlink(missing_ok=True)
 

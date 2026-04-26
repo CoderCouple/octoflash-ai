@@ -462,7 +462,7 @@ self.play(FadeOut(prev_rects), FadeIn(area), run_time=1.5)
 
 ## Rules
 
-1. **Single class** inheriting `OctoflashScene`. Start with `intro_sequence`, end with `outro_sequence`.
+1. **Single class** inheriting `OctoflashScene`. Do NOT use `intro_sequence` — jump straight into content to hook viewers in the first 3 seconds. End with `outro_sequence`.
 2. **Voiceover pattern**: wrap every group in `with self.voiceover(text="...") as tracker:` → animate → `remaining = tracker.get_remaining_duration(buff=-0.3)` → wait.
 3. **Cleanup every section**: `self.play(FadeOut(VGroup(...)))` before building next section. NEVER leave stale objects.
 4. **White text only**: all Text/MathTex is WHITE. Color ONLY for graph lines, highlights, MCQ correct answer.
