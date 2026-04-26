@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+yt-dlp
+python-multipart
+pydantic
+python-dotenv
+manim
+manim-voiceover[elevenlabs]
+elevenlabs
+anthropic
+youtube-transcript-api

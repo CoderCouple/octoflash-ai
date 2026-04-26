@@ -1,0 +1,1389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Octoflash — AI Video Generator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f8f9fb;
+      color: #1a1a2e;
+      min-height: 100vh;
+    }
+
+    /* ── Navbar ─────────────────────────────────────────────── */
+    .navbar {
+      background: #ffffff;
+      border-bottom: 1px solid #e5e7eb;
+      padding: 0 24px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(12px);
+      background: rgba(255,255,255,0.92);
+    }
+
+    .navbar-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 60px;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+    }
+
+    .logo-mark {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, #4fc3f7 0%, #7c3aed 100%);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 8px rgba(124, 58, 237, 0.25);
+    }
+
+    .logo-mark svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    .logo-text {
+      font-size: 1.25rem;
+      font-weight: 800;
+      color: #1a1a2e;
+      letter-spacing: -0.5px;
+    }
+
+    .logo-text span {
+      background: linear-gradient(135deg, #4fc3f7, #7c3aed);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .nav-badge {
+      font-size: 0.65rem;
+      font-weight: 600;
+      color: #7c3aed;
+      background: #f3f0ff;
+      padding: 3px 8px;
+      border-radius: 6px;
+      letter-spacing: 0.3px;
+    }
+
+    /* ── Container ──────────────────────────────────────────── */
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 32px 24px 60px;
+    }
+
+    /* ── Hero ────────────────────────────────────────────────── */
+    .hero {
+      text-align: center;
+      padding: 40px 0 36px;
+    }
+
+    .hero h1 {
+      font-size: 2.4rem;
+      font-weight: 800;
+      color: #1a1a2e;
+      letter-spacing: -1px;
+      margin-bottom: 8px;
+      line-height: 1.15;
+    }
+
+    .hero h1 span {
+      background: linear-gradient(135deg, #4fc3f7, #7c3aed);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero p {
+      color: #6b7280;
+      font-size: 1.05rem;
+      max-width: 500px;
+      margin: 0 auto;
+      line-height: 1.5;
+    }
+
+    /* ── Cards / Sections ───────────────────────────────────── */
+    .card {
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      padding: 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+
+    .card-header {
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: #7c3aed;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card-header .step-num {
+      width: 22px;
+      height: 22px;
+      background: linear-gradient(135deg, #4fc3f7, #7c3aed);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 0.7rem;
+      font-weight: 700;
+    }
+
+    /* ── Form Elements ──────────────────────────────────────── */
+    .input-group {
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      font-size: 0.78rem;
+      color: #6b7280;
+      margin-bottom: 6px;
+      font-weight: 600;
+      letter-spacing: 0.2px;
+    }
+
+    label .hint {
+      font-size: 0.7rem;
+      color: #9ca3af;
+      font-weight: 400;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+
+    input[type="text"], textarea, select {
+      width: 100%;
+      padding: 11px 14px;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      color: #1a1a2e;
+      font-size: 0.92rem;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+    }
+
+    input[type="text"]:focus, textarea:focus, select:focus {
+      border-color: #7c3aed;
+      box-shadow: 0 0 0 3px rgba(124,58,237,0.1);
+      background: #fff;
+    }
+
+    textarea {
+      height: 100px;
+      resize: vertical;
+    }
+
+    button {
+      padding: 11px 24px;
+      background: linear-gradient(135deg, #7c3aed, #6d28d9);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 0.92rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+      font-family: inherit;
+    }
+
+    button:hover { opacity: 0.92; }
+    button:active { transform: scale(0.98); }
+    button:disabled {
+      background: #d1d5db;
+      color: #9ca3af;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btn-primary {
+      width: 100%;
+      padding: 14px;
+      font-size: 0.95rem;
+    }
+
+    .btn-generate {
+      background: linear-gradient(135deg, #10b981, #059669);
+    }
+
+    .form-row {
+      display: flex;
+      gap: 14px;
+      align-items: flex-end;
+    }
+
+    .form-row .input-group { flex: 1; margin-bottom: 0; }
+
+    .form-row button { width: auto; white-space: nowrap; height: 44px; margin: 0; }
+
+    /* ── Spinner ────────────────────────────────────────────── */
+    .spinner {
+      display: none;
+      text-align: center;
+      padding: 48px 24px;
+    }
+
+    .spinner.active { display: block; }
+
+    .spinner-ring {
+      width: 36px;
+      height: 36px;
+      border: 3px solid #e5e7eb;
+      border-top-color: #7c3aed;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 16px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .spinner p {
+      color: #6b7280;
+      font-size: 0.9rem;
+    }
+
+    /* ── Error ──────────────────────────────────────────────── */
+    .error {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #dc2626;
+      padding: 12px 16px;
+      border-radius: 10px;
+      margin-top: 16px;
+      display: none;
+      font-size: 0.88rem;
+    }
+
+    /* ── Video Comparison ───────────────────────────────────── */
+    .video-comparison {
+      display: none;
+      margin-bottom: 20px;
+    }
+
+    .video-comparison.active { display: block; }
+
+    .video-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    .video-pane {
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+
+    .video-pane-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 16px;
+      border-bottom: 1px solid #f3f4f6;
+    }
+
+    .video-pane-header h3 {
+      font-size: 0.82rem;
+      color: #1a1a2e;
+      font-weight: 600;
+    }
+
+    .video-pane-header .tag {
+      font-size: 0.65rem;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+
+    .tag-original { background: #f3f4f6; color: #6b7280; }
+    .tag-generated { background: #ecfdf5; color: #059669; }
+
+    .video-pane-body {
+      padding: 14px;
+      min-height: 280px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .video-pane-body iframe {
+      width: 100%;
+      aspect-ratio: 16/9;
+      border: none;
+      border-radius: 8px;
+    }
+
+    .video-pane-body video {
+      width: 100%;
+      border-radius: 8px;
+      background: #000;
+    }
+
+    .video-comparison.portrait .video-pane-body {
+      min-height: 420px;
+      flex-direction: column;
+    }
+
+    .video-comparison.portrait .video-pane-body iframe,
+    .video-comparison.portrait .video-pane-body video {
+      width: 55%;
+      aspect-ratio: 9/16;
+      margin: 0 auto;
+    }
+
+    /* ── Render Status ──────────────────────────────────────── */
+    .render-status {
+      display: none;
+      width: 100%;
+      text-align: center;
+      padding: 20px 0;
+    }
+
+    .render-status.active { display: block; }
+
+    .render-status .status-text {
+      color: #7c3aed;
+      font-size: 0.88rem;
+      margin-bottom: 14px;
+      font-weight: 500;
+    }
+
+    .render-status .status-text.failed { color: #dc2626; }
+
+    .progress-bar {
+      width: 100%;
+      height: 3px;
+      background: #f3f4f6;
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .progress-bar .fill {
+      height: 100%;
+      background: linear-gradient(90deg, #7c3aed, #4fc3f7);
+      border-radius: 2px;
+      animation: progress-pulse 2s ease-in-out infinite;
+      width: 40%;
+    }
+
+    @keyframes progress-pulse {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(350%); }
+    }
+
+    .download-link {
+      display: inline-block;
+      margin-top: 12px;
+      padding: 8px 20px;
+      background: #f9fafb;
+      color: #7c3aed;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      text-decoration: none;
+      font-size: 0.82rem;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+
+    .download-link:hover { background: #f3f4f6; }
+
+    /* ── Meta Cards ─────────────────────────────────────────── */
+    .meta-row {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .meta-card {
+      flex: 1;
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 14px;
+      text-align: center;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+
+    .meta-card .value {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: #1a1a2e;
+    }
+
+    .meta-card .label {
+      font-size: 0.68rem;
+      color: #9ca3af;
+      margin-top: 4px;
+      text-transform: uppercase;
+      font-weight: 600;
+      letter-spacing: 0.4px;
+    }
+
+    /* ── Collapsible Sections ───────────────────────────────── */
+    .result-section {
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      margin-bottom: 10px;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+
+    .result-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 16px;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.15s;
+    }
+
+    .result-header:hover { background: #f9fafb; }
+
+    .result-header h3 {
+      font-size: 0.82rem;
+      color: #1a1a2e;
+      font-weight: 600;
+    }
+
+    .result-header .badge {
+      font-size: 0.68rem;
+      background: #f3f0ff;
+      color: #7c3aed;
+      padding: 2px 10px;
+      border-radius: 12px;
+      font-weight: 600;
+    }
+
+    .result-header .arrow {
+      color: #d1d5db;
+      transition: transform 0.2s;
+      font-size: 0.7rem;
+    }
+
+    .result-header.open .arrow { transform: rotate(90deg); }
+
+    .result-body {
+      display: none;
+      padding: 0 16px 16px;
+    }
+
+    .result-body.open { display: block; }
+
+    .result-body pre {
+      background: #f9fafb;
+      padding: 14px;
+      border-radius: 8px;
+      font-size: 0.78rem;
+      line-height: 1.6;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      color: #4b5563;
+      border: 1px solid #f3f4f6;
+    }
+
+    .copy-btn {
+      width: auto;
+      padding: 6px 14px;
+      font-size: 0.78rem;
+      margin: 0 0 10px 0;
+      background: #f9fafb;
+      color: #7c3aed;
+      border: 1px solid #e5e7eb;
+    }
+
+    .copy-btn:hover { background: #f3f4f6; }
+
+    /* ── Frames Grid ────────────────────────────────────────── */
+    .frames-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 8px;
+    }
+
+    .frames-grid img {
+      width: 100%;
+      border-radius: 6px;
+      border: 1px solid #f3f4f6;
+      cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+
+    .frames-grid img:hover {
+      transform: scale(1.04);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    }
+
+    /* ── Script Viewer ──────────────────────────────────────── */
+    .script-section {
+      display: none;
+      margin-bottom: 10px;
+    }
+
+    .script-section.active { display: block; }
+
+    .script-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 16px;
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px 10px 0 0;
+      cursor: pointer;
+      user-select: none;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+
+    .script-header:hover { background: #f9fafb; }
+
+    .script-header h3 {
+      font-size: 0.82rem;
+      color: #1a1a2e;
+      font-weight: 600;
+    }
+
+    .script-header .arrow {
+      color: #d1d5db;
+      transition: transform 0.2s;
+      font-size: 0.7rem;
+    }
+
+    .script-header.open .arrow { transform: rotate(90deg); }
+    .script-header.open { border-radius: 10px 10px 0 0; }
+    .script-header:not(.open) { border-radius: 10px; }
+
+    .script-body {
+      display: none;
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-top: none;
+      border-radius: 0 0 10px 10px;
+      padding: 16px;
+    }
+
+    .script-body.open { display: block; }
+
+    .script-body pre {
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 16px;
+      border-radius: 8px;
+      font-size: 0.76rem;
+      line-height: 1.55;
+      overflow-x: auto;
+      white-space: pre;
+      max-height: 500px;
+      overflow-y: auto;
+      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace;
+    }
+
+    .script-actions {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    /* ── Gallery Modal ──────────────────────────────────────── */
+    .gallery-modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.9);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .gallery-modal.active { display: flex; }
+
+    .gallery-modal img {
+      max-width: 85vw;
+      max-height: 85vh;
+      border-radius: 10px;
+      object-fit: contain;
+      user-select: none;
+    }
+
+    .gallery-close {
+      position: absolute;
+      top: 16px; right: 24px;
+      font-size: 1.8rem;
+      color: #fff;
+      cursor: pointer;
+      background: none;
+      border: none;
+      padding: 4px 12px;
+      line-height: 1;
+      opacity: 0.7;
+      transition: opacity 0.15s;
+    }
+
+    .gallery-close:hover { opacity: 1; background: none; }
+
+    .gallery-nav {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 2.2rem;
+      color: #fff;
+      cursor: pointer;
+      background: rgba(255,255,255,0.08);
+      border: none;
+      border-radius: 50%;
+      width: 48px;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      line-height: 1;
+      opacity: 0.6;
+      transition: opacity 0.15s, background 0.15s;
+    }
+
+    .gallery-nav:hover { opacity: 1; background: rgba(255,255,255,0.15); }
+
+    .gallery-prev { left: 20px; }
+    .gallery-next { right: 20px; }
+
+    .gallery-counter {
+      position: absolute;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #fff;
+      font-size: 0.82rem;
+      opacity: 0.6;
+      font-weight: 500;
+    }
+
+    /* ── Footer ─────────────────────────────────────────────── */
+    .footer {
+      text-align: center;
+      padding: 32px 24px;
+      color: #9ca3af;
+      font-size: 0.78rem;
+      border-top: 1px solid #f3f4f6;
+      margin-top: 40px;
+    }
+
+    .footer a {
+      color: #7c3aed;
+      text-decoration: none;
+    }
+
+    .footer a:hover { text-decoration: underline; }
+
+    /* ── Details ─────────────────────────────────────────────── */
+    .details {
+      display: none;
+    }
+
+    .details.active { display: block; }
+
+    /* ── Responsive ─────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      .hero h1 { font-size: 1.8rem; }
+      .video-row { grid-template-columns: 1fr; }
+      .form-row { flex-direction: column; }
+      .form-row button { width: 100%; }
+      .video-comparison.portrait .video-pane-body iframe,
+      .video-comparison.portrait .video-pane-body video { width: 80%; }
+      .navbar-inner { height: 52px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ══════════ NAVBAR ══════════ -->
+  <nav class="navbar">
+    <div class="navbar-inner">
+      <a class="logo" href="/">
+        <div class="logo-mark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+          </svg>
+        </div>
+        <span class="logo-text"><span>Octoflash</span></span>
+      </a>
+      <span class="nav-badge">AI Video Studio</span>
+    </div>
+  </nav>
+
+  <div class="container">
+
+    <!-- ══════════ HERO ══════════ -->
+    <div class="hero">
+      <h1>Analyze. Animate. <span>Publish.</span></h1>
+      <p>Turn any YouTube video into a rich Manim animation with AI-powered script generation, voiceover, and self-correction.</p>
+    </div>
+
+    <!-- ══════════ STEP 1: Analyze ══════════ -->
+    <form id="analyzeForm">
+      <div class="card">
+        <div class="card-header">
+          <span class="step-num">1</span>
+          Analyze Video
+        </div>
+        <div class="form-row" style="margin-bottom:16px;">
+          <div class="input-group">
+            <label>YouTube URL</label>
+            <input type="text" id="url" placeholder="https://youtube.com/shorts/..." required>
+          </div>
+          <button type="submit" id="analyzeBtn" style="height:44px;">Analyze Video</button>
+        </div>
+        <div class="input-group">
+          <label>Transcript <span class="hint">(optional — auto-fetched from YouTube captions if empty)</span></label>
+          <textarea id="transcript" placeholder="Leave empty to auto-fetch, or paste manually..."></textarea>
+        </div>
+      </div>
+    </form>
+
+    <div class="spinner" id="spinner">
+      <div class="spinner-ring"></div>
+      <p>Downloading and analyzing video...</p>
+    </div>
+
+    <div class="error" id="error"></div>
+
+    <!-- ══════════ VIDEO COMPARISON ══════════ -->
+    <div class="video-comparison" id="videoComparison">
+      <div class="video-row">
+        <div class="video-pane">
+          <div class="video-pane-header">
+            <h3>Original Video</h3>
+            <span class="tag tag-original">Source</span>
+          </div>
+          <div class="video-pane-body" id="originalPane">
+            <iframe id="youtubeEmbed" src="" allowfullscreen></iframe>
+          </div>
+        </div>
+        <div class="video-pane">
+          <div class="video-pane-header">
+            <h3>Generated Video</h3>
+            <span class="tag tag-generated" id="genTag">Rendering</span>
+          </div>
+          <div class="video-pane-body" id="generatedPane">
+            <div class="render-status active" id="renderStatus">
+              <div class="status-text" id="renderStatusText">Starting render...</div>
+              <div class="progress-bar" id="renderProgress"><div class="fill"></div></div>
+            </div>
+            <div style="display:none; width:100%;" id="generatedVideoWrap">
+              <video controls id="renderedVideo"></video>
+              <div style="text-align:center;">
+                <a class="download-link" id="downloadLink" href="#" download>Download MP4</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════ SOURCE FRAMES ══════════ -->
+    <div id="sourceFramesSection" style="display:none;">
+      <div class="result-section">
+        <div class="result-header open" onclick="toggle(this)">
+          <h3>Source Frames</h3>
+          <span class="badge" id="framesBadge">0</span>
+          <span class="arrow" style="transform:rotate(90deg)">&#9654;</span>
+        </div>
+        <div class="result-body open">
+          <div class="frames-grid" id="resFrames"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════ OUTPUT FRAMES ══════════ -->
+    <div id="outputFramesSection" style="display:none;">
+      <div class="result-section">
+        <div class="result-header open" onclick="toggle(this)">
+          <h3>Output Frames</h3>
+          <span class="badge" id="outputFramesBadge">0</span>
+          <span class="arrow" style="transform:rotate(90deg)">&#9654;</span>
+        </div>
+        <div class="result-body open">
+          <div class="frames-grid" id="outputFramesGrid"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════ STEP 2: Edit & Generate ══════════ -->
+    <div id="editSection" style="display:none;">
+      <div class="card">
+        <div class="card-header">
+          <span class="step-num">2</span>
+          Edit &amp; Generate
+        </div>
+        <div class="input-group">
+          <label>Title</label>
+          <input type="text" id="genTitle" placeholder="Inspired Video" value="Inspired Video">
+        </div>
+        <div class="input-group">
+          <label>Transcript <span class="hint">(editable)</span></label>
+          <textarea id="editTranscript" rows="4" style="min-height:80px;"></textarea>
+        </div>
+        <div class="input-group">
+          <label>Description <span class="hint">(editable)</span></label>
+          <textarea id="editDescription" rows="4" style="min-height:80px;"></textarea>
+        </div>
+        <div class="input-group">
+          <label>Manim Prompt <span class="hint">(editable — creative direction for the animation)</span></label>
+          <textarea id="editManimPrompt" rows="6" style="min-height:120px;"></textarea>
+        </div>
+        <div class="form-row" style="margin-bottom:16px;">
+          <div class="input-group">
+            <label>Quality</label>
+            <select id="genQuality">
+              <option value="ql">480p</option>
+              <option value="qm" selected>720p</option>
+              <option value="qh">1080p</option>
+            </select>
+          </div>
+          <div class="input-group">
+            <label>Orientation</label>
+            <select id="genOrientation">
+              <option value="portrait" selected>Portrait</option>
+              <option value="landscape">Landscape</option>
+            </select>
+          </div>
+          <div class="input-group">
+            <label>Voiceover</label>
+            <select id="genVoiceover">
+              <option value="true" selected>Yes</option>
+              <option value="false">No</option>
+            </select>
+          </div>
+        </div>
+        <button type="button" id="generateBtn" class="btn-primary btn-generate" onclick="startGenerate()">Generate Video</button>
+      </div>
+    </div>
+
+    <!-- ══════════ GENERATED SCRIPT ══════════ -->
+    <div class="script-section" id="scriptSection">
+      <div class="script-header" id="scriptHeader" onclick="toggleScript()">
+        <h3>Generated Manim Script</h3>
+        <span class="arrow">&#9654;</span>
+      </div>
+      <div class="script-body" id="scriptBody">
+        <div class="script-actions">
+          <button class="copy-btn" onclick="copyScript()">Copy Script</button>
+          <a class="download-link" id="scriptDownloadLink" href="#" download="episode.py">Download .py</a>
+        </div>
+        <pre id="scriptCode"></pre>
+      </div>
+    </div>
+
+    <!-- ══════════ YOUTUBE METADATA ══════════ -->
+    <div id="ytMetadataSection" style="display:none;">
+      <div class="result-section">
+        <div class="result-header open" onclick="toggle(this)">
+          <h3>YouTube Metadata</h3>
+          <span class="arrow" style="transform:rotate(90deg)">&#9654;</span>
+        </div>
+        <div class="result-body open">
+          <div id="ytMetadataLoading" style="display:none; padding:12px; color:#9ca3af;">Generating YouTube metadata...</div>
+          <div id="ytMetadataContent" style="display:none;">
+            <div style="margin-bottom:12px;">
+              <label>Title</label>
+              <div id="ytTitle" style="font-size:0.95rem; font-weight:600; color:#1a1a2e; padding:10px 14px; background:#f9fafb; border-radius:8px; border:1px solid #f3f4f6; cursor:pointer;" onclick="copyText(this)" title="Click to copy"></div>
+            </div>
+            <div style="margin-bottom:12px;">
+              <label>Description</label>
+              <pre id="ytDescription" style="font-size:0.78rem; color:#4b5563; padding:12px 14px; background:#f9fafb; border-radius:8px; border:1px solid #f3f4f6; white-space:pre-wrap; word-wrap:break-word; cursor:pointer; max-height:300px; overflow-y:auto;" onclick="copyText(this)" title="Click to copy"></pre>
+            </div>
+            <div style="margin-bottom:12px;">
+              <label>Tags</label>
+              <div id="ytTags" style="font-size:0.78rem; color:#4b5563; padding:10px 14px; background:#f9fafb; border-radius:8px; border:1px solid #f3f4f6; cursor:pointer;" onclick="copyText(this)" title="Click to copy"></div>
+            </div>
+            <button class="copy-btn" onclick="copyAllMetadata()">Copy All</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════ ANALYSIS DETAILS ══════════ -->
+    <div class="details" id="details">
+      <div class="meta-row">
+        <div class="meta-card">
+          <div class="value" id="metaDuration">-</div>
+          <div class="label">Seconds</div>
+        </div>
+        <div class="meta-card">
+          <div class="value" id="metaFrames">-</div>
+          <div class="label">Frames</div>
+        </div>
+        <div class="meta-card">
+          <div class="value" id="metaId">-</div>
+          <div class="label">Video ID</div>
+        </div>
+      </div>
+
+      <div class="result-section">
+        <div class="result-header" onclick="toggle(this)">
+          <h3>Transcript</h3>
+          <span class="arrow">&#9654;</span>
+        </div>
+        <div class="result-body">
+          <pre id="resTranscript"></pre>
+        </div>
+      </div>
+
+      <div class="result-section">
+        <div class="result-header" onclick="toggle(this)">
+          <h3>Description</h3>
+          <span class="arrow">&#9654;</span>
+        </div>
+        <div class="result-body">
+          <pre id="resDescription"></pre>
+        </div>
+      </div>
+
+      <div class="result-section">
+        <div class="result-header" onclick="toggle(this)">
+          <h3>Manim Prompt</h3>
+          <span class="arrow">&#9654;</span>
+        </div>
+        <div class="result-body">
+          <button class="copy-btn" onclick="copyPrompt()">Copy Prompt</button>
+          <pre id="resPrompt"></pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════ FOOTER ══════════ -->
+    <div class="footer">
+      Octoflash &mdash; AI-powered Manim animation studio &middot; Built with FastAPI, Claude &amp; Manim CE
+    </div>
+  </div>
+
+  <!-- Gallery lightbox modal -->
+  <div class="gallery-modal" id="galleryModal">
+    <button class="gallery-close" onclick="closeGallery()">&times;</button>
+    <button class="gallery-nav gallery-prev" onclick="galleryNav(-1)">&#8249;</button>
+    <img id="galleryImg" src="" alt="Frame">
+    <button class="gallery-nav gallery-next" onclick="galleryNav(1)">&#8250;</button>
+    <div class="gallery-counter" id="galleryCounter"></div>
+  </div>
+
+  <script>
+    const API_BASE = window.location.port === '8000' ? '' : 'http://localhost:8000';
+
+    const form = document.getElementById('analyzeForm');
+    const spinner = document.getElementById('spinner');
+    const errorEl = document.getElementById('error');
+
+    let analysisData = null;
+    let galleryImages = [];
+    let galleryIndex = 0;
+
+    function extractYouTubeId(url) {
+      const patterns = [
+        /youtube\.com\/watch\?v=([\w-]+)/,
+        /youtube\.com\/shorts\/([\w-]+)/,
+        /youtu\.be\/([\w-]+)/,
+      ];
+      for (const p of patterns) {
+        const m = url.match(p);
+        if (m) return m[1];
+      }
+      return null;
+    }
+
+    // ── STEP 1: Analyze ──
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const url = document.getElementById('url').value.trim();
+      const transcript = document.getElementById('transcript').value.trim();
+
+      errorEl.style.display = 'none';
+      document.getElementById('videoComparison').classList.remove('active');
+      document.getElementById('details').classList.remove('active');
+      document.getElementById('editSection').style.display = 'none';
+      document.getElementById('sourceFramesSection').style.display = 'none';
+      spinner.classList.add('active');
+      document.getElementById('analyzeBtn').disabled = true;
+
+      try {
+        const res = await fetch(API_BASE + '/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url, transcript }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Analysis failed');
+
+        analysisData = data;
+
+        document.getElementById('metaDuration').textContent = data.duration_seconds;
+        document.getElementById('metaFrames').textContent = data.frames.length;
+        document.getElementById('metaId').textContent = data.video_id;
+        document.getElementById('resTranscript').textContent = data.transcript;
+        document.getElementById('resDescription').textContent = data.description;
+        document.getElementById('resPrompt').textContent = data.manin_prompt;
+        document.getElementById('framesBadge').textContent = data.frames.length;
+
+        const framesGrid = document.getElementById('resFrames');
+        framesGrid.innerHTML = '';
+        galleryImages = [];
+        data.frames.forEach((f, idx) => {
+          const src = API_BASE + `/storage/${f}`;
+          galleryImages.push(src);
+          const img = document.createElement('img');
+          img.src = src;
+          img.alt = f.split('/').pop();
+          img.title = f.split('/').pop();
+          img.loading = 'lazy';
+          img.onclick = () => openGallery(idx);
+          framesGrid.appendChild(img);
+        });
+        document.getElementById('sourceFramesSection').style.display = 'block';
+
+        // Store YouTube ID for later (shown when Generate is clicked)
+        const ytId = extractYouTubeId(url);
+        if (ytId) {
+          document.getElementById('youtubeEmbed').src =
+            `https://www.youtube.com/embed/${ytId}?rel=0`;
+        }
+
+        document.getElementById('details').classList.add('active');
+
+        document.getElementById('editTranscript').value = data.transcript;
+        document.getElementById('editDescription').value = data.description;
+        document.getElementById('editManimPrompt').value = data.manin_prompt;
+        document.getElementById('genTitle').value = 'Inspired Video';
+        document.getElementById('editSection').style.display = 'block';
+        document.getElementById('editSection').scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+      } catch (err) {
+        errorEl.textContent = err.message;
+        errorEl.style.display = 'block';
+      } finally {
+        spinner.classList.remove('active');
+        document.getElementById('analyzeBtn').disabled = false;
+      }
+    });
+
+    // ── STEP 2: Generate ──
+    async function startGenerate() {
+      if (!analysisData) return;
+
+      const generateBtn = document.getElementById('generateBtn');
+      generateBtn.disabled = true;
+      generateBtn.textContent = 'Generating...';
+      errorEl.style.display = 'none';
+
+      try {
+        const transcript = document.getElementById('editTranscript').value.trim();
+        const description = document.getElementById('editDescription').value.trim();
+        const manimPrompt = document.getElementById('editManimPrompt').value.trim();
+        const title = document.getElementById('genTitle').value.trim() || 'Inspired Video';
+        const orientation = document.getElementById('genOrientation').value;
+        const quality = document.getElementById('genQuality').value;
+        const voiceover = document.getElementById('genVoiceover').value === 'true';
+
+        const renderStatus = document.getElementById('renderStatus');
+        const statusText = document.getElementById('renderStatusText');
+        const progressBar = document.getElementById('renderProgress');
+        const genTag = document.getElementById('genTag');
+        const generatedVideoWrap = document.getElementById('generatedVideoWrap');
+
+        renderStatus.classList.add('active');
+        statusText.className = 'status-text';
+        statusText.textContent = 'Starting render...';
+        progressBar.style.display = 'block';
+        generatedVideoWrap.style.display = 'none';
+        genTag.textContent = 'Rendering';
+        genTag.className = 'tag tag-generated';
+
+        const videoComp = document.getElementById('videoComparison');
+        videoComp.classList.add('active');
+        videoComp.classList.toggle('portrait', orientation === 'portrait');
+        videoComp.scrollIntoView({ behavior: 'smooth' });
+
+        const genRes = await fetch(API_BASE + '/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            video_id: analysisData.video_id,
+            transcript, description, duration: analysisData.duration_seconds,
+            title, orientation, quality, voiceover,
+            manin_prompt: manimPrompt,
+          }),
+        });
+
+        const genData = await genRes.json();
+        if (!genRes.ok) throw new Error(genData.detail || 'Generate request failed');
+
+        statusText.textContent = 'Rendering... this may take a few minutes';
+        pollJobStatus(genData.job_id, orientation);
+
+      } catch (err) {
+        errorEl.textContent = err.message;
+        errorEl.style.display = 'block';
+      } finally {
+        generateBtn.disabled = false;
+        generateBtn.textContent = 'Generate Video';
+      }
+    }
+
+    async function pollJobStatus(jobId, orientation) {
+      const statusText = document.getElementById('renderStatusText');
+      const progressBar = document.getElementById('renderProgress');
+      const renderStatus = document.getElementById('renderStatus');
+      const generatedVideoWrap = document.getElementById('generatedVideoWrap');
+      const genTag = document.getElementById('genTag');
+
+      const poll = async () => {
+        try {
+          const res = await fetch(API_BASE + `/generate/${jobId}/status`);
+          const job = await res.json();
+
+          if (job.status === 'rendering') {
+            if (job.error && job.error.startsWith('Self-correcting:')) {
+              statusText.textContent = job.error;
+            } else {
+              statusText.textContent = 'Rendering... this may take a few minutes';
+            }
+            setTimeout(poll, 3000);
+          } else if (job.status === 'pending') {
+            statusText.textContent = 'Queued, waiting to start...';
+            setTimeout(poll, 2000);
+          } else if (job.status === 'completed') {
+            renderStatus.classList.remove('active');
+            genTag.textContent = 'Complete';
+
+            const videoUrl = API_BASE + `/generate/${jobId}/video?orientation=${orientation}`;
+            document.getElementById('renderedVideo').src = videoUrl;
+            document.getElementById('downloadLink').href = videoUrl;
+            document.getElementById('downloadLink').download = `octoflash_${jobId}_${orientation}.mp4`;
+            generatedVideoWrap.style.display = 'block';
+
+            fetchScript(jobId);
+            fetchOutputFrames(jobId);
+            fetchYouTubeMetadata();
+
+          } else if (job.status === 'failed') {
+            statusText.className = 'status-text failed';
+            statusText.textContent = 'Failed: ' + (job.error || 'Unknown error');
+            progressBar.style.display = 'none';
+            genTag.textContent = 'Failed';
+            genTag.style.background = '#fef2f2';
+            genTag.style.color = '#dc2626';
+          }
+        } catch (err) {
+          statusText.className = 'status-text failed';
+          statusText.textContent = 'Connection error: ' + err.message;
+          progressBar.style.display = 'none';
+        }
+      };
+
+      poll();
+    }
+
+    function toggle(header) {
+      header.classList.toggle('open');
+      header.nextElementSibling.classList.toggle('open');
+    }
+
+    function copyPrompt() {
+      const text = document.getElementById('resPrompt').textContent;
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = event.target;
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = 'Copy Prompt', 1500);
+      });
+    }
+
+    async function fetchScript(videoId) {
+      try {
+        const res = await fetch(API_BASE + `/scripts/${videoId}`);
+        if (!res.ok) return;
+        const code = await res.text();
+        document.getElementById('scriptCode').textContent = code;
+        document.getElementById('scriptDownloadLink').href = API_BASE + `/scripts/${videoId}`;
+        document.getElementById('scriptDownloadLink').download = `episode_${videoId}.py`;
+        document.getElementById('scriptSection').classList.add('active');
+        document.getElementById('scriptHeader').classList.add('open');
+        document.getElementById('scriptBody').classList.add('open');
+      } catch (err) {
+        console.warn('Could not fetch script:', err);
+      }
+    }
+
+    async function fetchOutputFrames(jobId) {
+      try {
+        const res = await fetch(API_BASE + `/generate/${jobId}/output-frames`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data.frames || data.frames.length === 0) return;
+
+        const grid = document.getElementById('outputFramesGrid');
+        grid.innerHTML = '';
+        document.getElementById('outputFramesBadge').textContent = data.frames.length;
+
+        const outputGalleryStart = galleryImages.length;
+        data.frames.forEach((f, idx) => {
+          const src = API_BASE + `/storage/${f}`;
+          galleryImages.push(src);
+          const img = document.createElement('img');
+          img.src = src;
+          img.alt = `Output frame ${idx + 1}`;
+          img.title = `Output frame ${idx + 1}`;
+          img.loading = 'lazy';
+          img.onclick = () => openGallery(outputGalleryStart + idx);
+          grid.appendChild(img);
+        });
+
+        document.getElementById('outputFramesSection').style.display = 'block';
+      } catch (err) {
+        console.warn('Could not fetch output frames:', err);
+      }
+    }
+
+    async function fetchYouTubeMetadata() {
+      if (!analysisData) return;
+
+      const section = document.getElementById('ytMetadataSection');
+      const loading = document.getElementById('ytMetadataLoading');
+      const content = document.getElementById('ytMetadataContent');
+
+      section.style.display = 'block';
+      loading.style.display = 'block';
+      content.style.display = 'none';
+
+      try {
+        const res = await fetch(API_BASE + '/youtube-metadata', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            transcript: document.getElementById('editTranscript').value || analysisData.transcript,
+            title: document.getElementById('genTitle')?.value || '',
+            duration: analysisData.duration_seconds,
+          }),
+        });
+
+        if (!res.ok) throw new Error('Metadata generation failed');
+        const meta = await res.json();
+
+        document.getElementById('ytTitle').textContent = meta.title;
+        document.getElementById('ytDescription').textContent = meta.description;
+        document.getElementById('ytTags').textContent = meta.tags;
+
+        loading.style.display = 'none';
+        content.style.display = 'block';
+      } catch (err) {
+        loading.textContent = 'Failed to generate metadata: ' + err.message;
+        console.warn('YouTube metadata error:', err);
+      }
+    }
+
+    function copyText(el) {
+      navigator.clipboard.writeText(el.textContent).then(() => {
+        const orig = el.style.background;
+        el.style.background = '#d1fae5';
+        setTimeout(() => el.style.background = orig, 500);
+      });
+    }
+
+    function copyAllMetadata() {
+      const title = document.getElementById('ytTitle').textContent;
+      const desc = document.getElementById('ytDescription').textContent;
+      const tags = document.getElementById('ytTags').textContent;
+      const all = `Title:\n${title}\n\nDescription:\n${desc}\n\nTags:\n${tags}`;
+      navigator.clipboard.writeText(all).then(() => {
+        const btn = event.target;
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = 'Copy All', 1500);
+      });
+    }
+
+    function toggleScript() {
+      const header = document.getElementById('scriptHeader');
+      const body = document.getElementById('scriptBody');
+      header.classList.toggle('open');
+      body.classList.toggle('open');
+    }
+
+    function copyScript() {
+      const text = document.getElementById('scriptCode').textContent;
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = event.target;
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = 'Copy Script', 1500);
+      });
+    }
+
+    function openGallery(idx) {
+      galleryIndex = idx;
+      updateGallery();
+      document.getElementById('galleryModal').classList.add('active');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeGallery() {
+      document.getElementById('galleryModal').classList.remove('active');
+      document.body.style.overflow = '';
+    }
+
+    function galleryNav(dir) {
+      galleryIndex = (galleryIndex + dir + galleryImages.length) % galleryImages.length;
+      updateGallery();
+    }
+
+    function updateGallery() {
+      document.getElementById('galleryImg').src = galleryImages[galleryIndex];
+      document.getElementById('galleryCounter').textContent =
+        `${galleryIndex + 1} / ${galleryImages.length}`;
+    }
+
+    document.addEventListener('keydown', (e) => {
+      const modal = document.getElementById('galleryModal');
+      if (!modal.classList.contains('active')) return;
+      if (e.key === 'Escape') closeGallery();
+      else if (e.key === 'ArrowLeft') galleryNav(-1);
+      else if (e.key === 'ArrowRight') galleryNav(1);
+    });
+
+    document.getElementById('galleryModal').addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) closeGallery();
+    });
+  </script>
+</body>
+</html>
