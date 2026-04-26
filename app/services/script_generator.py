@@ -469,7 +469,7 @@ self.play(FadeOut(prev_rects), FadeIn(area), run_time=1.5)
 5. **Axes sizing**: `x_length=7, y_length=3.0-3.5`. Position `.shift(DOWN*0.4)`. NEVER let axes touch the title or caption zone.
 6. **Duration**: The rendered video MUST be close to the target duration. Use SHORT run_times: `run_time=0.5` for FadeIn/FadeOut, `run_time=1` for Create/Write, `run_time=2` max for sweeps. Keep `self.wait()` calls to 0.5-1s. Do NOT add long pauses. Limit to 4-6 voiceover sections MAX. Each section should be 8-15 seconds, not 30+.
 7. **Title text**: Long titles MUST be split into 2 lines or use `font_size=36`. Never exceed 40 characters per line. Use `\n` to wrap.
-8. **Valid Python**: No `ShowCreation` (use `Create`), no `get_graph()` (use `axes.plot()`), no `max()` in lambdas (use `np.maximum()`), no `math.sin` (use `np.sin`).
+8. **Valid Python**: No `ShowCreation` (use `Create`), no `get_graph()` (use `axes.plot()`), no `max()` in lambdas (use `np.maximum()`), no `math.sin` (use `np.sin`). `axes.get_coordinate_labels()` takes NO keyword arguments (no font_size, no color). `LaggedStartMap` takes (AnimClass, group, **kwargs) — do NOT pass direction constants like LEFT as positional args.
 9. **2D only**: No ThreeDAxes, Surface, ThreeDScene, move_camera, set_camera_orientation.
 10. **No `np.random`**: all plots must be deterministic.
 11. **Imports**: only import from `manim`, `numpy`, `app.manim_pipeline.styles`, `app.manim_pipeline.visual_effects`, `app.manim_pipeline.diagram_patterns`, `app.manim_pipeline.ml_visuals`.
@@ -1041,6 +1041,14 @@ def sanitize_script(code: str) -> str:
     code = re.sub(r"MathTex\(\s*''\s*\)", r"MathTex(r'\\quad')", code)
     code = re.sub(r'Tex\(\s*""\s*\)', r'Tex(r"\\quad")', code)
     code = re.sub(r"Tex\(\s*''\s*\)", r"Tex(r'\\quad')", code)
+
+    # ── HIGH: get_coordinate_labels() doesn't accept font_size/color kwargs ──
+    # Replace with get_coordinate_labels() (no kwargs) or just remove the call
+    code = re.sub(
+        r'\.get_coordinate_labels\([^)]*\)',
+        '.get_coordinate_labels()',
+        code,
+    )
 
     # ── HIGH: self.play() with no args (ValueError) ──
     code = re.sub(r'^\s*self\.play\(\s*\)\s*$', '', code, flags=re.MULTILINE)
