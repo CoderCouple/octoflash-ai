@@ -2,6 +2,8 @@ FROM python:3.11-slim
 
 # Install system dependencies for Manim, Cairo, Pango, ffmpeg, LaTeX
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    gcc \
     ffmpeg \
     libcairo2-dev \
     libpango1.0-dev \
