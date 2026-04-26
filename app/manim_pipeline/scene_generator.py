@@ -221,7 +221,7 @@ def _vo_block(voiceover: bool, text: str, section: dict, body_lines: list[str]) 
     else:
         for bl in body_lines:
             lines.append(bl)
-        wait_time = max(0.5, section["end"] - section["start"] - 1.5)
+        wait_time = min(2.0, max(0.5, section["end"] - section["start"] - 1.5))
         lines.append(f"self.wait({wait_time:.1f})")
 
     return lines

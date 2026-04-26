@@ -21,8 +21,10 @@ def split_transcript_by_sentences(transcript: str, duration: float) -> list[dict
     if not sentences:
         return [{"text": "Visual summary of the video.", "start": 0.0, "end": duration}]
 
-    target_section_duration = 6.0
-    num_sections = max(1, round(duration / target_section_duration))
+    # Cap duration and limit sections for tight, fast videos
+    capped_duration = min(duration, 90.0)
+    target_section_duration = 10.0
+    num_sections = max(3, min(6, round(capped_duration / target_section_duration)))
 
     # Distribute sentences evenly across sections
     sentences_per_section = max(1, len(sentences) // num_sections)
