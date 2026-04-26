@@ -975,6 +975,16 @@ def sanitize_script(code: str) -> str:
             code,
         )
 
+    # ── CRITICAL: LaggedStartMap with direction as 3rd positional arg ──
+    # Claude writes LaggedStartMap(GrowFromEdge, group, LEFT, ...) but the 3rd
+    # positional arg is `arg_creator` (must be callable). Strip the direction.
+    _directions = r'(?:LEFT|RIGHT|UP|DOWN|UL|UR|DL|DR|ORIGIN)'
+    code = re.sub(
+        rf'(LaggedStartMap\(\s*\w+,\s*\w+),\s*{_directions}\s*,',
+        r'\1,',
+        code,
+    )
+
     # ── CRITICAL: Python builtins not vectorized for numpy arrays ──
     # max(0, x) → np.maximum(0, x) in any lambda context
     code = re.sub(r'lambda\s+(\w+)\s*:\s*max\((\d+),\s*\1\)', r'lambda \1: np.maximum(\2, \1)', code)
