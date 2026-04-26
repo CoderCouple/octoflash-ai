@@ -1017,6 +1017,11 @@ def sanitize_script(code: str) -> str:
     code = re.sub(r'\bThreeDAxes\b', 'Axes', code)
     code = re.sub(r'^\s*self\.add_fixed_in_frame_mobjects\(.*?\)\s*$', '', code, flags=re.MULTILINE)
 
+    # ── HIGH: Strip 3D kwargs from Axes (z_range, z_length) ──
+    # Claude sometimes passes z_range/z_length to 2D Axes which crashes
+    code = re.sub(r',\s*z_range\s*=\s*\[[^\]]*\]', '', code)
+    code = re.sub(r',\s*z_length\s*=\s*[\d.]+', '', code)
+
     # ── HIGH: Old animation names (manimlib removals) ──
     code = re.sub(r'\bFadeInFromDown\b', 'FadeIn', code)
     code = re.sub(r'\bFadeInFromLarge\b', 'FadeIn', code)
