@@ -123,7 +123,11 @@ def analyze(req: AnalyzeRequest):
         if req.transcript.strip():
             transcript = process_transcript(req.transcript)
         else:
-            transcript = fetch_transcript(req.url)
+            try:
+                transcript = fetch_transcript(req.url)
+            except RuntimeError:
+                logger.warning("No transcript available, continuing without it")
+                transcript = "(No transcript available — generate based on video title and thumbnails)"
 
         # Try downloading video for frame extraction
         frames = []
