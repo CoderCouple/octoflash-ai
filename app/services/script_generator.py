@@ -952,6 +952,29 @@ def sanitize_script(code: str) -> str:
     code = re.sub(r'\bTextMobject\b', 'Text', code)
     code = re.sub(r'\.get_graph\(', '.plot(', code)
 
+    # ── CRITICAL: Unwrap self.play(helper(self, ...)) for helpers that play internally ──
+    # These functions already call self.play() and return None. Wrapping in self.play() crashes.
+    _self_playing_helpers = [
+        'staggered_write', 'sweep_in_group', 'cascade_fade_in', 'pop_in_sequence',
+        'flash_and_circumscribe', 'crossfade_transition', 'zoom_transition',
+        'section_wipe', 'equation_step_through', 'cleanup_and_transition',
+        'pulse_effect', 'emphasis_box', 'underline_emphasis',
+        'intro_sequence', 'outro_sequence',
+    ]
+    for helper in _self_playing_helpers:
+        # self.play(helper(self, ...), run_time=X) → helper(self, ...)
+        code = re.sub(
+            rf'self\.play\(\s*{helper}\(self,\s*(.*?)\)\s*(?:,\s*run_time\s*=\s*[\d.]+)?\s*\)',
+            rf'{helper}(self, \1)',
+            code,
+        )
+        # self.play(helper(self)) → helper(self)
+        code = re.sub(
+            rf'self\.play\(\s*{helper}\(self\)\s*(?:,\s*run_time\s*=\s*[\d.]+)?\s*\)',
+            rf'{helper}(self)',
+            code,
+        )
+
     # ── CRITICAL: Python builtins not vectorized for numpy arrays ──
     # max(0, x) → np.maximum(0, x) in any lambda context
     code = re.sub(r'lambda\s+(\w+)\s*:\s*max\((\d+),\s*\1\)', r'lambda \1: np.maximum(\2, \1)', code)
