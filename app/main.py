@@ -1,3 +1,4 @@
+import logging
 import uuid
 from pathlib import Path
 
@@ -13,13 +14,15 @@ from app.models.schemas import (
 )
 from app.services.downloader import download_video, validate_youtube_url
 from app.services.frame_extractor import extract_frames, get_video_duration
-from app.services.transcriber import fetch_transcript, process_transcript
+from app.services.transcriber import extract_youtube_id, fetch_transcript, process_transcript
 from app.services.describer import generate_description
 from app.services.prompt_builder import build_manin_prompt
 from app.services.job_manager import create_job, get_job
 from app.manim_pipeline.renderer import render_job
 from app.services.youtube_metadata import generate_youtube_metadata
 from app.utils.files import cleanup_video
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Octoflash", version="0.3.0")
 
@@ -50,6 +53,64 @@ def health():
     return {"status": "ok"}
 
 
+def _get_oembed_duration(yt_id: str) -> float | None:
+    """Get video duration via YouTube oEmbed (no auth needed)."""
+    import urllib.request
+    import json
+    try:
+        url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={yt_id}&format=json"
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            data = json.loads(resp.read())
+            # oEmbed doesn't return duration directly, but we can estimate from title
+            # For a more accurate approach, use youtube-transcript-api snippet times
+            return None
+    except Exception:
+        return None
+
+
+def _get_youtube_thumbnails(video_id: str, yt_id: str) -> list[str]:
+    """Download YouTube thumbnail images as fallback frames."""
+    import urllib.request
+    from app.utils.files import get_frames_dir
+
+    frames_dir = get_frames_dir(video_id)
+    thumbnails = [
+        f"https://img.youtube.com/vi/{yt_id}/maxresdefault.jpg",
+        f"https://img.youtube.com/vi/{yt_id}/hqdefault.jpg",
+        f"https://img.youtube.com/vi/{yt_id}/mqdefault.jpg",
+    ]
+
+    saved = []
+    for i, thumb_url in enumerate(thumbnails):
+        try:
+            out_path = frames_dir / f"frame_{i+1:04d}.jpg"
+            urllib.request.urlretrieve(thumb_url, str(out_path))
+            if out_path.stat().st_size > 1000:  # skip placeholder images
+                saved.append(str(out_path.relative_to(frames_dir.parent.parent)))
+        except Exception:
+            continue
+
+    logger.info("Fetched %d YouTube thumbnails as fallback frames", len(saved))
+    return saved
+
+
+def _get_duration_from_transcript(url: str) -> float:
+    """Estimate duration from transcript snippet timestamps."""
+    try:
+        from youtube_transcript_api import YouTubeTranscriptApi
+        yt_id = extract_youtube_id(url)
+        if not yt_id:
+            return 60.0
+        api = YouTubeTranscriptApi()
+        result = api.fetch(yt_id, languages=["en", "en-US", "en-GB"])
+        if result.snippets:
+            last = result.snippets[-1]
+            return last.start + last.duration
+    except Exception:
+        pass
+    return 60.0
+
+
 @app.post("/analyze", response_model=AnalyzeResponse)
 def analyze(req: AnalyzeRequest):
     # Validate URL
@@ -58,20 +119,28 @@ def analyze(req: AnalyzeRequest):
 
     video_id = None
     try:
-        # Download video
-        video_id, video_path = download_video(req.url)
-
-        # Get duration
-        duration = get_video_duration(video_path)
-
-        # Extract frames
-        frames = extract_frames(video_id, video_path)
-
         # Process transcript — auto-fetch if not provided
         if req.transcript.strip():
             transcript = process_transcript(req.transcript)
         else:
             transcript = fetch_transcript(req.url)
+
+        # Try downloading video for frame extraction
+        frames = []
+        duration = 60.0  # default
+        try:
+            video_id, video_path = download_video(req.url)
+            duration = get_video_duration(video_path)
+            frames = extract_frames(video_id, video_path)
+            logger.info("Video downloaded, %d frames extracted", len(frames))
+        except Exception as dl_err:
+            logger.warning("Video download failed, using YouTube thumbnails: %s", dl_err)
+            # Fallback: use YouTube thumbnails + transcript-based duration
+            video_id = uuid.uuid4().hex[:12]
+            yt_id = extract_youtube_id(req.url)
+            if yt_id:
+                duration = _get_duration_from_transcript(req.url)
+                frames = _get_youtube_thumbnails(video_id, yt_id)
 
         # Generate description
         description = generate_description(transcript, frames, duration)
