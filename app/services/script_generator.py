@@ -467,14 +467,15 @@ self.play(FadeOut(prev_rects), FadeIn(area), run_time=1.5)
 3. **Cleanup every section**: `self.play(FadeOut(VGroup(...)))` before building next section. NEVER leave stale objects.
 4. **White text only**: all Text/MathTex is WHITE. Color ONLY for graph lines, highlights, MCQ correct answer.
 5. **Axes sizing**: `x_length=7, y_length=3.0-3.5`. Position `.shift(DOWN*0.4)`. NEVER let axes touch the title or caption zone.
-6. **Duration**: fill the target. Don't cram everything in 10 seconds or leave 30 seconds of silence.
-7. **Valid Python**: No `ShowCreation` (use `Create`), no `get_graph()` (use `axes.plot()`), no `max()` in lambdas (use `np.maximum()`), no `math.sin` (use `np.sin`).
-8. **2D only**: No ThreeDAxes, Surface, ThreeDScene, move_camera, set_camera_orientation.
-9. **No `np.random`**: all plots must be deterministic.
-10. **Imports**: only import from `manim`, `numpy`, `app.manim_pipeline.styles`, `app.manim_pipeline.visual_effects`, `app.manim_pipeline.diagram_patterns`, `app.manim_pipeline.ml_visuals`.
-11. **No dangerous imports**: never `import os`, `import sys`, `import subprocess`, `import socket`.
-12. **Lambda closures**: in loops, capture loop var with default arg: `lambda i=i: ...` not `lambda: ... i ...`.
-13. **MathTex**: never use `$` inside MathTex (already in math mode). Use raw strings `r"..."` for LaTeX.
+6. **Duration**: The rendered video MUST be close to the target duration. Use SHORT run_times: `run_time=0.5` for FadeIn/FadeOut, `run_time=1` for Create/Write, `run_time=2` max for sweeps. Keep `self.wait()` calls to 0.5-1s. Do NOT add long pauses. Limit to 4-6 voiceover sections MAX. Each section should be 8-15 seconds, not 30+.
+7. **Title text**: Long titles MUST be split into 2 lines or use `font_size=36`. Never exceed 40 characters per line. Use `\n` to wrap.
+8. **Valid Python**: No `ShowCreation` (use `Create`), no `get_graph()` (use `axes.plot()`), no `max()` in lambdas (use `np.maximum()`), no `math.sin` (use `np.sin`).
+9. **2D only**: No ThreeDAxes, Surface, ThreeDScene, move_camera, set_camera_orientation.
+10. **No `np.random`**: all plots must be deterministic.
+11. **Imports**: only import from `manim`, `numpy`, `app.manim_pipeline.styles`, `app.manim_pipeline.visual_effects`, `app.manim_pipeline.diagram_patterns`, `app.manim_pipeline.ml_visuals`.
+12. **No dangerous imports**: never `import os`, `import sys`, `import subprocess`, `import socket`.
+13. **Lambda closures**: in loops, capture loop var with default arg: `lambda i=i: ...` not `lambda: ... i ...`.
+14. **MathTex**: never use `$` inside MathTex (already in math mode). Use raw strings `r"..."` for LaTeX.
 
 ## Output
 
@@ -577,13 +578,19 @@ def generate_episode_script(
     if feedback:
         task += f"## IMPROVEMENT FEEDBACK (from previous iteration)\n{feedback}\n\n"
 
+    # Cap target duration — keep videos tight and fast-paced
+    target_secs = min(duration, 120)  # never exceed 2 minutes
+    num_sections = max(3, min(6, int(target_secs / 15)))  # 3-6 sections
+
     task += (
         f"## Task\n"
         f"Write a complete Manim scene script for this educational content.\n"
         f"Include: mathematical formulas (MathTex), Axes plots/graphs where relevant, "
         f"animated diagrams, and one MCQ with answer reveal.\n"
         f"{'Use OctoflashScene with voiceover.' if voiceover else 'Use Scene (no voiceover). Add self.wait() calls to fill duration.'}\n"
-        f"Target duration: ~{duration:.0f} seconds.\n"
+        f"CRITICAL: Target duration is ~{target_secs:.0f} seconds. Use ONLY {num_sections} sections. "
+        f"Keep animations FAST: run_time=0.5 for transitions, run_time=1-2 for main animations. "
+        f"NO long waits. The video must be TIGHT and FAST-PACED, not slow and boring.\n"
         f"Make it visually engaging — match the quality of 3Blue1Brown style animations."
     )
 

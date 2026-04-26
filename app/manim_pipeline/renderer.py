@@ -517,8 +517,10 @@ def _create_watermark_image(
     ]:
         if Path(font_path).exists():
             try:
-                main_font = ImageFont.truetype(font_path, size=int(height * 0.12))
-                sub_font = ImageFont.truetype(font_path, size=int(height * 0.035))
+                # Scale font to fit width (narrower dimension constrains)
+                scale = min(width / 1920, height / 1080)
+                main_font = ImageFont.truetype(font_path, size=int(86 * scale))
+                sub_font = ImageFont.truetype(font_path, size=int(30 * scale))
                 break
             except Exception:
                 continue

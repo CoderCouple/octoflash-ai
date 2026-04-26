@@ -35,7 +35,7 @@ TEXT_SECONDARY  = "#e0e0e0"  # near-white, readable on black
 TEXT_DIM        = "#9e9e9e"  # muted but still visible on black
 
 # ── Font Sizes ───────────────────────────────────────────────────────────────
-TITLE_SIZE     = 52   # bold section titles at top
+TITLE_SIZE     = 38   # bold section titles at top (fits ~40 chars per line)
 SUBTITLE_SIZE  = 30
 BODY_SIZE      = 24
 LABEL_SIZE     = 20
