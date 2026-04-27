@@ -84,12 +84,16 @@ def render_scene(
 
     if result.returncode != 0:
         error_msg = _classify_error(result.stderr)
-        # Log full stderr for debugging (truncated at 2000 chars)
-        logger.error("Manim render failed (class=%s):\n--- STDOUT ---\n%s\n--- STDERR ---\n%s",
-                     scene_class, result.stdout[:1000], result.stderr[:2000])
+        # Log full stderr for debugging
+        logger.error("MANIM RENDER FAILED (class=%s, returncode=%d)", scene_class, result.returncode)
+        logger.error("--- STDOUT (last 1500 chars) ---\n%s", result.stdout[-1500:])
+        logger.error("--- STDERR (last 3000 chars) ---\n%s", result.stderr[-3000:])
+        logger.error("--- CLASSIFIED ERROR ---\n%s", error_msg[:500])
         raise RuntimeError(error_msg)
 
+    logger.info("Manim render succeeded (class=%s)", scene_class)
     video_file = _find_rendered_video(media_dir)
+    logger.info("  Video file: %s", video_file)
 
     return {
         "scene_file": str(scene_file),
@@ -124,14 +128,25 @@ def render_job(
         update_job(job_id, status="rendering")
         portrait = orientation == "portrait"
 
+        logger.info("=" * 70)
+        logger.info("RENDER JOB STARTED: %s", job_id)
+        logger.info("  Title: %s", title)
+        logger.info("  Duration: %.1fs | Orientation: %s | Quality: %s | Voiceover: %s",
+                     duration, orientation, quality, voiceover)
+        logger.info("  Transcript length: %d chars", len(transcript))
+        logger.info("  Description length: %d chars", len(description))
+        logger.info("  Source video ID: %s", source_video_id or "(none)")
+
         # Collect source frame paths for vision analysis (use source video_id)
         source_frame_paths = _find_source_frames(source_video_id or job_id)
+        logger.info("  Source frames found: %d", len(source_frame_paths) if source_frame_paths else 0)
 
         # === STEP 1: Generate script with Claude ===
         claude_code = None
         script_file_path = None
 
         try:
+            logger.info("STEP 1: Calling Claude API for script generation...")
             claude_code = generate_episode_script(
                 transcript=transcript,
                 description=description,
@@ -143,9 +158,12 @@ def render_job(
                 manin_prompt=manin_prompt,
             )
             script_file_path = save_script(job_id, claude_code)
-            logger.info("Claude script (voiceover=%s) saved to %s", voiceover, script_file_path)
+            logger.info("STEP 1 DONE: Claude script saved (%d chars, voiceover=%s) → %s",
+                        len(claude_code), voiceover, script_file_path)
+            logger.info("  Scene class: %s", _detect_scene_class(claude_code))
         except Exception as e:
-            logger.warning("Claude script generation failed: %s", e)
+            logger.error("STEP 1 FAILED: Claude script generation error: %s: %s",
+                         type(e).__name__, e)
 
         # === STEP 2: Try rendering with fallback chain ===
         scene_code = None
@@ -155,33 +173,42 @@ def render_job(
         # Attempt 1: Claude script with voiceover
         if claude_code and voiceover:
             try:
-                logger.info("Attempt 1: Rendering Claude script with voiceover (%d chars)", len(claude_code))
+                logger.info("=" * 60)
+                logger.info("ATTEMPT 1: Claude script WITH voiceover (%d chars)", len(claude_code))
+                logger.info("  Scene class: %s", _detect_scene_class(claude_code))
+                logger.info("  Has MathTex: %s | Has Axes: %s | Has ValueTracker: %s",
+                            "MathTex" in claude_code, "Axes(" in claude_code, "ValueTracker" in claude_code)
                 validate_scene_code(claude_code)
                 result = render_scene(job_id, claude_code, quality=quality, portrait=portrait)
                 scene_code = claude_code
                 render_method = "claude+voice"
-                logger.info("Render succeeded: claude+voice")
+                logger.info("ATTEMPT 1 SUCCEEDED: claude+voice")
             except Exception as e:
-                logger.warning("Claude+voice render failed: %s", str(e)[:500])
+                logger.error("ATTEMPT 1 FAILED (claude+voice): %s", str(e)[:1000])
+                logger.error("  Full error type: %s", type(e).__name__)
 
         # Attempt 2: Strip voiceover from Claude script (keep rich animations)
         if result is None and claude_code:
             try:
-                logger.info("Attempt 2: Stripping voiceover and retrying")
+                logger.info("=" * 60)
+                logger.info("ATTEMPT 2: Stripping voiceover from Claude script")
                 claude_no_voice = strip_voiceover(claude_code)
+                logger.info("  Stripped script: %d chars (from %d)", len(claude_no_voice), len(claude_code))
                 validate_scene_code(claude_no_voice)
                 result = render_scene(job_id, claude_no_voice, quality=quality, portrait=portrait)
                 scene_code = claude_no_voice
                 render_method = "claude-no-voice"
                 script_file_path = save_script(job_id, claude_no_voice)
-                logger.info("Render succeeded: claude-no-voice (stripped from voiceover script)")
+                logger.info("ATTEMPT 2 SUCCEEDED: claude-no-voice")
             except Exception as e:
-                logger.warning("Claude-no-voice render failed: %s", str(e)[:500])
+                logger.error("ATTEMPT 2 FAILED (claude-no-voice): %s", str(e)[:1000])
+                logger.error("  Full error type: %s", type(e).__name__)
 
         # Attempt 3: Generate fresh no-voice script from Claude
         if result is None:
             try:
-                logger.info("Attempt 3: Generating fresh no-voice script from Claude")
+                logger.info("=" * 60)
+                logger.info("ATTEMPT 3: Generating FRESH no-voice script from Claude API")
                 fresh_no_voice = generate_episode_script(
                     transcript=transcript,
                     description=description,
@@ -192,18 +219,23 @@ def render_job(
                     source_frames=source_frame_paths,
                     manin_prompt=manin_prompt,
                 )
+                logger.info("  Fresh script generated: %d chars", len(fresh_no_voice))
+                logger.info("  Scene class: %s", _detect_scene_class(fresh_no_voice))
                 validate_scene_code(fresh_no_voice)
                 result = render_scene(job_id, fresh_no_voice, quality=quality, portrait=portrait)
                 scene_code = fresh_no_voice
                 render_method = "claude-fresh-no-voice"
                 script_file_path = save_script(job_id, fresh_no_voice)
-                logger.info("Render succeeded: claude-fresh-no-voice")
+                logger.info("ATTEMPT 3 SUCCEEDED: claude-fresh-no-voice")
             except Exception as e:
-                logger.warning("Claude fresh-no-voice render failed: %s", str(e)[:300])
+                logger.error("ATTEMPT 3 FAILED (claude-fresh-no-voice): %s", str(e)[:1000])
+                logger.error("  Full error type: %s", type(e).__name__)
 
         # Attempt 4: Simple generator (last resort)
         if result is None:
-            logger.warning("All Claude attempts failed, falling back to simple generator")
+            logger.error("=" * 60)
+            logger.error("ALL CLAUDE ATTEMPTS FAILED — falling back to simple text generator")
+            logger.error("  This means the user will get a basic text-only video")
             simple_code = generate_scene_code(
                 video_id=job_id,
                 transcript=transcript,
@@ -218,6 +250,9 @@ def render_job(
             render_method = "simple-fallback"
 
         # === STEP 3: Store paths ===
+        logger.info("=" * 60)
+        logger.info("RENDER RESULT: method=%s | video_file=%s",
+                     render_method, result.get("video_file") if result else "NONE")
         scene_file = str(STORAGE_DIR / "renders" / job_id / "scene.py")
         update_fields = {"scene_file": scene_file}
         if script_file_path:
@@ -261,6 +296,10 @@ def render_job(
 
         # === STEP 7: Mark complete ===
         video_key = "portrait_video" if portrait else "landscape_video"
+        logger.info("=" * 70)
+        logger.info("RENDER JOB COMPLETED: %s", job_id)
+        logger.info("  Method: %s", render_method)
+        logger.info("  Video: %s", result.get("video_file"))
         update_job(
             job_id,
             status="completed",
@@ -269,7 +308,7 @@ def render_job(
         )
 
     except Exception as e:
-        logger.exception("render_job failed for %s", job_id)
+        logger.exception("RENDER JOB FAILED for %s: %s: %s", job_id, type(e).__name__, e)
         update_job(
             job_id,
             status="failed",
@@ -517,10 +556,10 @@ def _create_watermark_image(
     ]:
         if Path(font_path).exists():
             try:
-                # Scale font to fit width (narrower dimension constrains)
+                # Big bold font — scales with screen size
                 scale = min(width / 1920, height / 1080)
-                main_font = ImageFont.truetype(font_path, size=int(86 * scale))
-                sub_font = ImageFont.truetype(font_path, size=int(30 * scale))
+                main_font = ImageFont.truetype(font_path, size=int(140 * scale))
+                sub_font = ImageFont.truetype(font_path, size=int(48 * scale))
                 break
             except Exception:
                 continue
@@ -529,18 +568,33 @@ def _create_watermark_image(
         main_font = ImageFont.load_default()
         sub_font = ImageFont.load_default()
 
-    # Draw main text centered
+    # Draw BIG main text centered — fill most of the screen
     bbox = draw.textbbox((0, 0), main_text, font=main_font)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+
+    # If text doesn't fill at least 60% of width, scale up the font
+    if tw < width * 0.6 and main_font != ImageFont.load_default():
+        target_width = int(width * 0.7)
+        scale_factor = target_width / max(tw, 1)
+        current_size = main_font.size
+        new_size = int(current_size * scale_factor)
+        try:
+            main_font = ImageFont.truetype(main_font.path, size=new_size)
+            sub_font = ImageFont.truetype(main_font.path, size=int(new_size * 0.35))
+            bbox = draw.textbbox((0, 0), main_text, font=main_font)
+            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        except Exception:
+            pass
+
     x = (width - tw) // 2
-    y = (height - th) // 2 - int(height * 0.05)
+    y = (height - th) // 2 - int(height * 0.06)
     draw.text((x, y), main_text, fill=(255, 255, 255), font=main_font)
 
     # Draw subtitle centered below
     bbox2 = draw.textbbox((0, 0), sub_text, font=sub_font)
     tw2 = bbox2[2] - bbox2[0]
     x2 = (width - tw2) // 2
-    y2 = y + th + int(height * 0.03)
+    y2 = y + th + int(height * 0.04)
     draw.text((x2, y2), sub_text, fill=(79, 195, 247), font=sub_font)  # ACCENT_CYAN
 
     img.save(str(output_path))

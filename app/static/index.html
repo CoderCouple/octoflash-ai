@@ -761,12 +761,19 @@
           <span class="step-num">1</span>
           Analyze Video
         </div>
-        <div class="form-row" style="margin-bottom:16px;">
-          <div class="input-group">
-            <label>YouTube URL</label>
-            <input type="text" id="url" placeholder="https://youtube.com/shorts/..." required>
+        <div id="urlInputs">
+          <div class="form-row" style="margin-bottom:8px;">
+            <div class="input-group" style="flex:1;">
+              <label>YouTube URL(s) <span class="hint">(add multiple to combine concepts)</span></label>
+              <input type="text" class="url-input" placeholder="https://youtube.com/shorts/..." required>
+            </div>
           </div>
-          <button type="submit" id="analyzeBtn" style="height:44px;">Analyze Video</button>
+        </div>
+        <div style="margin-bottom:16px; display:flex; gap:8px;">
+          <button type="button" id="addUrlBtn" style="height:36px; padding:0 16px; font-size:0.8rem; background:#f3f0ff; color:#7c3aed; border:1px solid #e5e7eb; border-radius:8px; cursor:pointer; font-weight:600;">+ Add URL</button>
+          <span id="urlCount" style="font-size:0.75rem; color:#888; line-height:36px;"></span>
+          <div style="flex:1;"></div>
+          <button type="submit" id="analyzeBtn" style="height:36px;">Analyze Video</button>
         </div>
         <div class="input-group">
           <label>Transcript <span class="hint">(optional — auto-fetched from YouTube captions if empty)</span></label>
@@ -1025,10 +1032,44 @@
       return null;
     }
 
+    // ── Multi-URL management ──
+    const urlInputs = document.getElementById('urlInputs');
+    const addUrlBtn = document.getElementById('addUrlBtn');
+    const urlCountEl = document.getElementById('urlCount');
+
+    function updateUrlCount() {
+      const count = urlInputs.querySelectorAll('.url-input').length;
+      urlCountEl.textContent = count > 1 ? `${count} URLs (will combine)` : '';
+      document.getElementById('analyzeBtn').textContent = count > 1 ? 'Analyze & Combine' : 'Analyze Video';
+    }
+
+    addUrlBtn.addEventListener('click', () => {
+      const count = urlInputs.querySelectorAll('.url-input').length;
+      if (count >= 5) return;
+      const row = document.createElement('div');
+      row.className = 'form-row';
+      row.style.marginBottom = '8px';
+      row.innerHTML = `
+        <div class="input-group" style="flex:1;">
+          <input type="text" class="url-input" placeholder="https://youtube.com/..." required>
+        </div>
+        <button type="button" class="remove-url-btn" style="height:44px;width:36px;background:#fee;color:#e53e3e;border:1px solid #fcc;border-radius:8px;cursor:pointer;font-size:1.2rem;font-weight:700;">&times;</button>
+      `;
+      row.querySelector('.remove-url-btn').addEventListener('click', () => {
+        row.remove();
+        updateUrlCount();
+      });
+      urlInputs.appendChild(row);
+      updateUrlCount();
+    });
+
     // ── STEP 1: Analyze ──
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const url = document.getElementById('url').value.trim();
+      const allUrlInputs = urlInputs.querySelectorAll('.url-input');
+      const urls = [...allUrlInputs].map(el => el.value.trim()).filter(Boolean);
+      if (urls.length === 0) return;
+      const url = urls[0];
       const transcript = document.getElementById('transcript').value.trim();
 
       errorEl.style.display = 'none';
@@ -1037,16 +1078,29 @@
       document.getElementById('editSection').style.display = 'none';
       document.getElementById('sourceFramesSection').style.display = 'none';
       spinner.classList.add('active');
+      spinner.querySelector('p').textContent = urls.length > 1
+        ? `Analyzing ${urls.length} videos and combining concepts...`
+        : 'Downloading and analyzing video...';
       document.getElementById('analyzeBtn').disabled = true;
 
       try {
-        const res = await fetch(API_BASE + '/analyze', {
+        let endpoint, body;
+        if (urls.length > 1) {
+          endpoint = '/analyze-multi';
+          body = JSON.stringify({ urls });
+        } else {
+          endpoint = '/analyze';
+          body = JSON.stringify({ url, transcript });
+        }
+        const res = await fetch(API_BASE + endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url, transcript }),
+          body,
         });
 
-        const data = await res.json();
+        const text = await res.text();
+        let data;
+        try { data = JSON.parse(text); } catch { throw new Error(text || `Server error (${res.status})`); }
         if (!res.ok) throw new Error(data.detail || 'Analysis failed');
 
         analysisData = data;

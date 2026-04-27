@@ -9,3 +9,4 @@ manim-voiceover[elevenlabs]
 elevenlabs
 anthropic
 youtube-transcript-api
+faster-whisper

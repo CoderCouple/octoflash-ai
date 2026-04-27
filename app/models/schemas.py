@@ -6,6 +6,10 @@ class AnalyzeRequest(BaseModel):
     transcript: str = ""  # optional — auto-fetched if empty
 
 
+class AnalyzeMultiRequest(BaseModel):
+    urls: list[str]  # multiple YouTube URLs to combine
+
+
 class AnalyzeResponse(BaseModel):
     video_id: str
     duration_seconds: float
@@ -13,6 +17,7 @@ class AnalyzeResponse(BaseModel):
     transcript: str
     description: str
     manin_prompt: str
+    synthesized_title: str | None = None
 
 
 class GenerateRequest(BaseModel):

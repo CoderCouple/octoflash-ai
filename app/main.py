@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from app.models.schemas import (
-    AnalyzeRequest, AnalyzeResponse,
+    AnalyzeRequest, AnalyzeResponse, AnalyzeMultiRequest,
     GenerateRequest, GenerateResponse, JobStatusResponse,
 )
 from app.services.downloader import download_video, validate_youtube_url
@@ -17,6 +17,7 @@ from app.services.frame_extractor import extract_frames, get_video_duration
 from app.services.transcriber import extract_youtube_id, fetch_transcript, process_transcript
 from app.services.describer import generate_description
 from app.services.prompt_builder import build_manin_prompt
+from app.services.script_generator import synthesize_concepts
 from app.services.job_manager import create_job, get_job
 from app.manim_pipeline.renderer import render_job
 from app.services.youtube_metadata import generate_youtube_metadata
@@ -177,6 +178,99 @@ def analyze(req: AnalyzeRequest):
         if video_id:
             cleanup_video(video_id)
         raise HTTPException(status_code=500, detail=f"Unexpected error: {e}")
+
+
+# ── Multi-URL Analyze ──────────────────────────────────────────────────────
+
+
+@app.post("/analyze-multi", response_model=AnalyzeResponse)
+def analyze_multi(req: AnalyzeMultiRequest):
+    """Analyze multiple YouTube URLs and combine their content into one."""
+    if not req.urls or len(req.urls) < 2:
+        raise HTTPException(status_code=400, detail="Provide at least 2 URLs")
+    if len(req.urls) > 5:
+        raise HTTPException(status_code=400, detail="Maximum 5 URLs allowed")
+
+    # Validate all URLs first
+    for url in req.urls:
+        if not validate_youtube_url(url):
+            raise HTTPException(status_code=400, detail=f"Invalid YouTube URL: {url}")
+
+    all_transcripts = []
+    all_frames = []
+    total_duration = 0.0
+    combined_video_id = uuid.uuid4().hex[:12]
+
+    for i, url in enumerate(req.urls):
+        logger.info("Analyzing URL %d/%d: %s", i + 1, len(req.urls), url)
+
+        # Fetch transcript
+        try:
+            transcript = fetch_transcript(url)
+        except RuntimeError:
+            logger.warning("No transcript for URL %d, using placeholder", i + 1)
+            transcript = f"(No transcript available for video {i + 1})"
+        all_transcripts.append(f"--- Video {i + 1} ---\n{transcript}")
+
+        # Try video download for frames, fallback to thumbnails
+        try:
+            vid_id, video_path = download_video(url)
+            duration = get_video_duration(video_path)
+            frames = extract_frames(vid_id, video_path)
+            total_duration += duration
+            all_frames.extend(frames)
+        except Exception as dl_err:
+            logger.warning("Download failed for URL %d, using thumbnails: %s", i + 1, dl_err)
+            yt_id = extract_youtube_id(url)
+            if yt_id:
+                total_duration += _get_duration_from_transcript(url)
+                frames = _get_youtube_thumbnails(combined_video_id, yt_id)
+                all_frames.extend(frames)
+            else:
+                total_duration += 60.0
+
+    # Synthesize concepts across all videos
+    transcript_dicts = [
+        {"url": url, "transcript": t, "title": f"Video {i + 1}"}
+        for i, (url, t) in enumerate(zip(req.urls, all_transcripts))
+    ]
+
+    try:
+        synthesis = synthesize_concepts(
+            transcripts=transcript_dicts,
+            frames=all_frames[:12],
+            total_duration=total_duration,
+        )
+        combined_transcript = synthesis["combined_transcript"]
+        synthesized_title = synthesis.get("title")
+        logger.info("Concept synthesis succeeded: title='%s'", synthesized_title)
+    except Exception as synth_err:
+        logger.warning("Concept synthesis failed, falling back to concatenation: %s", synth_err)
+        combined_transcript = "\n\n".join(all_transcripts)
+        synthesis = None
+        synthesized_title = None
+
+    # Generate combined description
+    description = generate_description(combined_transcript, all_frames[:12], total_duration)
+
+    # Build prompt (with synthesis data if available)
+    manin_prompt = build_manin_prompt(
+        combined_transcript, all_frames[:12], description, total_duration,
+        synthesis=synthesis,
+    )
+
+    logger.info("Multi-URL analysis complete: %d URLs, %.1fs total, %d frames",
+                len(req.urls), total_duration, len(all_frames))
+
+    return AnalyzeResponse(
+        video_id=combined_video_id,
+        duration_seconds=round(total_duration, 2),
+        frames=all_frames[:12],  # cap at 12 frames
+        transcript=combined_transcript,
+        description=description,
+        manin_prompt=manin_prompt,
+        synthesized_title=synthesized_title,
+    )
 
 
 # ── Generate Endpoints ──────────────────────────────────────────────────────

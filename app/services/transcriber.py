@@ -6,9 +6,13 @@ Falls back to yt-dlp subtitle extraction if the API fails.
 import logging
 import re
 import subprocess
+import tempfile
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# Lazy-loaded Whisper model singleton
+_whisper_model = None
 
 
 def extract_youtube_id(url: str) -> str | None:
@@ -47,9 +51,15 @@ def fetch_transcript(url: str) -> str:
         logger.info("Transcript fetched via yt-dlp subtitles (%d chars)", len(transcript))
         return transcript
 
+    # Attempt 3: faster-whisper local transcription
+    transcript = _fetch_via_whisper(url)
+    if transcript:
+        logger.info("Transcript fetched via faster-whisper (%d chars)", len(transcript))
+        return transcript
+
     raise RuntimeError(
         f"No transcript available for {url}. "
-        "The video may not have captions enabled."
+        "All methods failed (youtube-transcript-api, yt-dlp, faster-whisper)."
     )
 
 
@@ -70,8 +80,6 @@ def _fetch_via_api(yt_id: str) -> str | None:
 def _fetch_via_ytdlp(url: str) -> str | None:
     """Fetch subtitles using yt-dlp as fallback."""
     try:
-        import tempfile
-
         with tempfile.TemporaryDirectory() as tmpdir:
             out_template = str(Path(tmpdir) / "subs")
             cmd = [
@@ -85,6 +93,7 @@ def _fetch_via_ytdlp(url: str) -> str | None:
             ]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
             if result.returncode != 0:
+                logger.warning("yt-dlp subtitle download returned code %d: %s", result.returncode, result.stderr[:300])
                 return None
 
             # Find the subtitle file (.vtt or .srt)
@@ -94,9 +103,54 @@ def _fetch_via_ytdlp(url: str) -> str | None:
                 if subs:
                     raw = subs[0].read_text()
                     return _clean_subtitle_text(raw)
+        logger.warning("yt-dlp produced no subtitle files")
         return None
     except Exception as e:
         logger.warning("yt-dlp subtitle extraction failed: %s", e)
+        return None
+
+
+def _fetch_via_whisper(url: str) -> str | None:
+    """Download audio and transcribe locally using faster-whisper."""
+    global _whisper_model
+    try:
+        from faster_whisper import WhisperModel
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            audio_path = str(Path(tmpdir) / "audio.wav")
+            cmd = [
+                "yt-dlp",
+                "-x", "--audio-format", "wav",
+                "-o", audio_path,
+                url,
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            if result.returncode != 0:
+                logger.warning("yt-dlp audio download failed: %s", result.stderr[:500])
+                return None
+
+            # yt-dlp may append extension — find the actual file
+            actual = Path(audio_path)
+            if not actual.exists():
+                candidates = list(Path(tmpdir).glob("audio.*"))
+                if not candidates:
+                    logger.warning("No audio file found after yt-dlp download")
+                    return None
+                actual = candidates[0]
+
+            # Lazy-load model (singleton)
+            if _whisper_model is None:
+                logger.info("Loading faster-whisper 'base' model (first use)...")
+                _whisper_model = WhisperModel("base", compute_type="int8")
+
+            segments, _info = _whisper_model.transcribe(
+                str(actual), beam_size=5, language="en"
+            )
+            text = " ".join(seg.text.strip() for seg in segments if seg.text.strip())
+            return text.strip() if text.strip() else None
+
+    except Exception as e:
+        logger.warning("faster-whisper transcription failed: %s", e)
         return None
 
 

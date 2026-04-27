@@ -7,6 +7,7 @@ back to Claude for critique, and regenerates until quality is satisfactory.
 """
 
 import base64
+import json
 import logging
 import os
 import re
@@ -191,6 +192,13 @@ You have access to `app.manim_pipeline.diagram_patterns` for structured diagrams
 ### Highlight Utilities:
 - `highlight_box(target, color=ACCENT_YELLOW)` — SurroundingRectangle around any mobject
 - `animate_highlight_sequence(self, [mob1, mob2, ...])` — sequentially highlight then remove
+
+**IMPORTANT — Diagram helper return values:** Functions like `make_timeline()`, `make_flowchart()`, `make_pipeline()`, `make_layer_stack()`, `make_comparison_layout()` return VGroups directly with custom attributes attached. The return value IS the VGroup — do NOT access `.group` on it. Examples:
+- `timeline = make_timeline([...])` → `timeline` IS a VGroup. Access `timeline.nodes`, `timeline.line`, `timeline.labels`, `timeline.sublabels`
+- `flow = make_flowchart([...])` → `flow` IS a VGroup. Access `flow.boxes`, `flow.arrows`
+- `pipe = make_pipeline([...])` → `pipe` IS a VGroup. Access `pipe.stages`, `pipe.arrows`
+- `comp = make_comparison_layout(...)` → `comp` IS a VGroup. Access `comp.left_col`, `comp.right_col`, `comp.divider`
+- Use `timeline.shift(UP)` directly, NOT `timeline.group.shift(UP)`
 
 When the video content involves processes, architectures, comparisons, or structured data, USE these diagram helpers instead of building from scratch.
 
@@ -476,6 +484,7 @@ self.play(FadeOut(prev_rects), FadeIn(area), run_time=1.5)
 12. **No dangerous imports**: never `import os`, `import sys`, `import subprocess`, `import socket`.
 13. **Lambda closures**: in loops, capture loop var with default arg: `lambda i=i: ...` not `lambda: ... i ...`.
 14. **MathTex**: never use `$` inside MathTex (already in math mode). Use raw strings `r"..."` for LaTeX.
+15. **`always_redraw`**: the callable MUST return a Mobject (e.g. `Arrow`, `Line`, `Dot`), NOT a numpy array or point. Wrong: `always_redraw(lambda: center + np.array([...]))`. Right: `always_redraw(lambda: Arrow(center, center + np.array([...]), color=ACCENT_BLUE))`.
 
 ## Output
 
@@ -517,6 +526,153 @@ def _get_client() -> anthropic.Anthropic:
     if not api_key:
         raise RuntimeError("ANTHROPIC_API_KEY not set in environment")
     return anthropic.Anthropic(api_key=api_key)
+
+
+SYNTHESIS_PROMPT = r"""You are an expert educational content synthesizer. Given transcripts from multiple YouTube videos on related topics, you must:
+
+1. Extract the key concepts from each video
+2. Find relationships and connections between concepts across videos
+3. Create a unified narrative arc that weaves all concepts together
+4. Produce a structured section outline for a single cohesive Manim animation
+
+Respond with ONLY a valid JSON object (no markdown, no code fences) in this exact format:
+{
+  "title": "Combined topic title (concise, max 50 chars)",
+  "core_concepts": [
+    {"name": "Concept A", "from_videos": [1, 2], "explanation": "Brief explanation"},
+    {"name": "Concept B", "from_videos": [3], "explanation": "Brief explanation"}
+  ],
+  "narrative_arc": "How concepts connect: A leads to B which enables C...",
+  "section_outline": [
+    {"title": "Section name", "concepts": ["A"], "visual": "axes/graph", "duration": 15},
+    {"title": "Section name", "concepts": ["B", "C"], "visual": "diagram/flowchart", "duration": 20}
+  ],
+  "mcq": {"question": "Quiz question combining concepts", "options": ["A", "B", "C", "D"], "correct_idx": 0},
+  "combined_transcript": "A single synthesized narrative that merges all source material into one coherent explainer script. This should read as a unified voiceover script, not a concatenation."
+}
+
+Rules:
+- section_outline should have 4-6 sections, each 10-20 seconds
+- visual types: "axes/graph", "diagram/flowchart", "formula/equation", "comparison/table", "timeline", "neural_net", "value_tracker"
+- combined_transcript should be a SINGLE flowing narrative, NOT separate summaries per video
+- The narrative_arc must explicitly state how concepts from different videos connect
+- The MCQ should test understanding of the unified concept, not just one video
+"""
+
+
+def synthesize_concepts(
+    transcripts: list[dict],
+    frames: list[str],
+    total_duration: float,
+) -> dict:
+    """Extract and synthesize concepts from multiple video transcripts using Claude.
+
+    Args:
+        transcripts: List of dicts with keys: url, transcript, title
+        frames: List of frame paths (sampled across all videos)
+        total_duration: Combined duration of all source videos
+
+    Returns:
+        Dict with: title, core_concepts, narrative_arc, section_outline, mcq, combined_transcript
+    """
+    client = _get_client()
+
+    content = []
+
+    # Include sample frames if available
+    if frames:
+        full_paths = [STORAGE_DIR / f for f in frames]
+        existing = [p for p in full_paths if p.exists()]
+        sampled = _sample_items(existing, 6)
+        for frame_path in sampled:
+            b64 = _image_to_base64(frame_path)
+            if b64:
+                content.append({
+                    "type": "image",
+                    "source": {"type": "base64", "media_type": "image/jpeg", "data": b64},
+                })
+        if sampled:
+            content.append({
+                "type": "text",
+                "text": f"Above: sample frames from {len(transcripts)} source videos.\n\n",
+            })
+
+    # Build the transcript block
+    transcript_block = ""
+    for i, t in enumerate(transcripts):
+        transcript_block += (
+            f"### Video {i + 1}: {t.get('title', f'Video {i + 1}')}\n"
+            f"URL: {t.get('url', 'N/A')}\n"
+            f"Transcript:\n{t['transcript'][:3000]}\n\n"
+        )
+
+    target_duration = min(total_duration, 120)
+
+    content.append({
+        "type": "text",
+        "text": (
+            f"## Source Videos ({len(transcripts)} videos, ~{total_duration:.0f}s total)\n\n"
+            f"{transcript_block}\n"
+            f"## Target\n"
+            f"Synthesize these {len(transcripts)} videos into ONE unified animation "
+            f"(target ~{target_duration:.0f}s). Find the connecting threads between all videos "
+            f"and create a single cohesive narrative.\n"
+        ),
+    })
+
+    logger.info("Calling Claude API for concept synthesis (%d videos)", len(transcripts))
+
+    response = client.messages.create(
+        model=CLAUDE_MODEL,
+        max_tokens=4096,
+        system=SYNTHESIS_PROMPT,
+        messages=[{"role": "user", "content": content}],
+    )
+
+    raw_text = response.content[0].text.strip()
+
+    # Strip markdown code fences if Claude added them
+    if raw_text.startswith("```"):
+        raw_text = re.sub(r"^```(?:json)?\s*\n?", "", raw_text)
+        raw_text = re.sub(r"\n?```\s*$", "", raw_text)
+
+    try:
+        synthesis = json.loads(raw_text)
+    except json.JSONDecodeError as e:
+        logger.error("Failed to parse synthesis JSON: %s\nRaw: %s", e, raw_text[:500])
+        # Fallback: return a basic structure with concatenated transcripts
+        return _fallback_synthesis(transcripts, total_duration)
+
+    # Validate required keys
+    required = ["title", "core_concepts", "narrative_arc", "section_outline", "combined_transcript"]
+    for key in required:
+        if key not in synthesis:
+            logger.warning("Synthesis missing key '%s', using fallback", key)
+            return _fallback_synthesis(transcripts, total_duration)
+
+    logger.info(
+        "Concept synthesis complete: title='%s', %d concepts, %d sections",
+        synthesis["title"],
+        len(synthesis.get("core_concepts", [])),
+        len(synthesis.get("section_outline", [])),
+    )
+    return synthesis
+
+
+def _fallback_synthesis(transcripts: list[dict], total_duration: float) -> dict:
+    """Fallback synthesis when Claude fails to return valid JSON."""
+    combined = "\n\n".join(
+        f"[From {t.get('title', f'Video {i+1}')}]: {t['transcript']}"
+        for i, t in enumerate(transcripts)
+    )
+    return {
+        "title": f"Combined: {len(transcripts)} Topics",
+        "core_concepts": [],
+        "narrative_arc": "Sequential presentation of topics from multiple sources.",
+        "section_outline": [],
+        "mcq": {"question": "What was the main topic?", "options": ["A", "B", "C", "D"], "correct_idx": 0},
+        "combined_transcript": combined,
+    }
 
 
 def generate_episode_script(
@@ -572,6 +728,9 @@ def generate_episode_script(
         f"## Visual Description\n{description}\n\n"
     )
 
+    # Detect multi-video synthesis from manin_prompt
+    is_multi_video = manin_prompt and "## Multi-Video Synthesis" in manin_prompt
+
     if manin_prompt:
         task += f"## Creative Direction (User-Edited Prompt)\n{manin_prompt}\n\n"
 
@@ -582,17 +741,33 @@ def generate_episode_script(
     target_secs = min(duration, 120)  # never exceed 2 minutes
     num_sections = max(3, min(6, int(target_secs / 15)))  # 3-6 sections
 
-    task += (
-        f"## Task\n"
-        f"Write a complete Manim scene script for this educational content.\n"
-        f"Include: mathematical formulas (MathTex), Axes plots/graphs where relevant, "
-        f"animated diagrams, and one MCQ with answer reveal.\n"
-        f"{'Use OctoflashScene with voiceover.' if voiceover else 'Use Scene (no voiceover). Add self.wait() calls to fill duration.'}\n"
-        f"CRITICAL: Target duration is ~{target_secs:.0f} seconds. Use ONLY {num_sections} sections. "
-        f"Keep animations FAST: run_time=0.5 for transitions, run_time=1-2 for main animations. "
-        f"NO long waits. The video must be TIGHT and FAST-PACED, not slow and boring.\n"
-        f"Make it visually engaging — match the quality of 3Blue1Brown style animations."
-    )
+    if is_multi_video:
+        task += (
+            f"## Task\n"
+            f"Write a complete Manim scene script for this **unified multi-video concept explainer**.\n"
+            f"CRITICAL: The Creative Direction above contains a section outline from concept synthesis. "
+            f"Follow that outline EXACTLY — each section must cover the specified concepts using the specified visual type.\n"
+            f"The animation must feel like ONE cohesive explainer, NOT separate summaries stitched together.\n"
+            f"Include: mathematical formulas (MathTex), Axes plots/graphs where relevant, "
+            f"animated diagrams, and one MCQ with answer reveal.\n"
+            f"{'Use OctoflashScene with voiceover.' if voiceover else 'Use Scene (no voiceover). Add self.wait() calls to fill duration.'}\n"
+            f"CRITICAL: Target duration is ~{target_secs:.0f} seconds. Use ONLY {num_sections} sections. "
+            f"Keep animations FAST: run_time=0.5 for transitions, run_time=1-2 for main animations. "
+            f"NO long waits. The video must be TIGHT and FAST-PACED, not slow and boring.\n"
+            f"Make it visually engaging — match the quality of 3Blue1Brown style animations."
+        )
+    else:
+        task += (
+            f"## Task\n"
+            f"Write a complete Manim scene script for this educational content.\n"
+            f"Include: mathematical formulas (MathTex), Axes plots/graphs where relevant, "
+            f"animated diagrams, and one MCQ with answer reveal.\n"
+            f"{'Use OctoflashScene with voiceover.' if voiceover else 'Use Scene (no voiceover). Add self.wait() calls to fill duration.'}\n"
+            f"CRITICAL: Target duration is ~{target_secs:.0f} seconds. Use ONLY {num_sections} sections. "
+            f"Keep animations FAST: run_time=0.5 for transitions, run_time=1-2 for main animations. "
+            f"NO long waits. The video must be TIGHT and FAST-PACED, not slow and boring.\n"
+            f"Make it visually engaging — match the quality of 3Blue1Brown style animations."
+        )
 
     content.append({"type": "text", "text": task})
 
@@ -853,16 +1028,24 @@ def sanitize_script(code: str) -> str:
     Comprehensive fixes for manimgl→CE API differences, vectorization issues,
     dangerous imports, 3D/camera removal, and LaTeX pitfalls.
     """
+    original = code
+    fixes_applied = []
+
+    def _track(label, old_code, new_code):
+        if old_code != new_code:
+            fixes_applied.append(label)
+        return new_code
+
     # ── CRITICAL: Inject missing import header ──
     # Claude sometimes omits imports entirely, causing NameError at runtime.
     if 'from manim import' not in code and 'from manim ' not in code:
         logger.warning("sanitize_script: Missing 'from manim import' — injecting full import header")
-        has_voiceover = 'OctoflashScene' in code or 'Octoflash3DScene' in code
+        has_voiceover = 'OctoflashScene' in code
         import_header = 'from manim import *\nimport numpy as np\n'
         if has_voiceover:
             import_header += (
                 'from app.manim_pipeline.styles import (\n'
-                '    OctoflashScene, Octoflash3DScene, make_title_card, make_cell, make_cell_row,\n'
+                '    OctoflashScene, make_title_card, make_cell, make_cell_row,\n'
                 '    make_code_block, make_mcq_card, intro_sequence, outro_sequence,\n'
                 '    BG_COLOR, CODE_BG,\n'
                 '    ACCENT_BLUE, ACCENT_ORANGE, ACCENT_GREEN, ACCENT_RED,\n'
@@ -881,6 +1064,35 @@ def sanitize_script(code: str) -> str:
                 ')\n'
             )
         code = import_header + '\n' + code
+
+    # ── CRITICAL: Inject missing styles helper imports ──
+    # Even non-OctoflashScene scripts may use make_mcq_card, make_title_card, etc.
+    _styles_helpers = [
+        'make_title_card', 'make_cell', 'make_cell_row',
+        'make_code_block', 'make_mcq_card', 'intro_sequence', 'outro_sequence',
+    ]
+    if 'from app.manim_pipeline.styles' in code:
+        # Check if any helpers are used but not imported
+        existing_styles_import = re.search(r'from app\.manim_pipeline\.styles import \([^)]*\)', code, re.DOTALL)
+        if existing_styles_import:
+            import_block = existing_styles_import.group(0)
+            missing = [f for f in _styles_helpers if f in code and f not in import_block]
+            if missing:
+                # Add missing helpers to existing import (replace closing paren)
+                new_block = import_block[:-1] + '    ' + ', '.join(missing) + ',\n)'
+                code = code.replace(import_block, new_block)
+    else:
+        used_styles = [f for f in _styles_helpers if f in code]
+        if used_styles:
+            code = (
+                'from app.manim_pipeline.styles import (\n'
+                '    BG_COLOR, ACCENT_BLUE, ACCENT_ORANGE, ACCENT_GREEN, ACCENT_RED,\n'
+                '    ACCENT_PURPLE, ACCENT_YELLOW, ACCENT_CYAN, ACCENT_PINK,\n'
+                '    TEXT_PRIMARY, TEXT_SECONDARY, TEXT_DIM,\n'
+                '    TITLE_SIZE, SUBTITLE_SIZE, BODY_SIZE, LABEL_SIZE,\n'
+                '    ' + ', '.join(used_styles) + ',\n'
+                ')\n'
+            ) + code
 
     # ── CRITICAL: Inject missing visual_effects imports ──
     _ve_funcs = [
@@ -947,19 +1159,34 @@ def sanitize_script(code: str) -> str:
             ) + code
 
     # ── CRITICAL: manimgl → Manim CE name fixes ──
+    _prev = code
     code = re.sub(r'\bShowCreation\b', 'Create', code)
     code = re.sub(r'\bTexMobject\b', 'MathTex', code)
     code = re.sub(r'\bTextMobject\b', 'Text', code)
     code = re.sub(r'\.get_graph\(', '.plot(', code)
+    code = _track("manimgl→CE names", _prev, code)
 
     # ── CRITICAL: Unwrap self.play(helper(self, ...)) for helpers that play internally ──
     # These functions already call self.play() and return None. Wrapping in self.play() crashes.
     _self_playing_helpers = [
+        # visual_effects
         'staggered_write', 'sweep_in_group', 'cascade_fade_in', 'pop_in_sequence',
         'flash_and_circumscribe', 'crossfade_transition', 'zoom_transition',
         'section_wipe', 'equation_step_through', 'cleanup_and_transition',
         'pulse_effect', 'emphasis_box', 'underline_emphasis',
         'intro_sequence', 'outro_sequence',
+        # diagram_patterns (all animate_* functions call scene.play() internally)
+        'animate_flowchart_build', 'animate_flow_pulse',
+        'animate_data_through_layers', 'animate_comparison_reveal',
+        'animate_timeline_progress', 'animate_data_packet',
+        'animate_table_row_by_row', 'animate_table_cell_by_cell',
+        'animate_grid_highlight_row', 'animate_grid_highlight_col',
+        'animate_grid_highlight_cell', 'animate_highlight_sequence',
+        # ml_visuals
+        'animate_network_creation', 'animate_forward_pass',
+        'animate_backpropagation', 'animate_activation_comparison',
+        'animate_gradient_descent', 'animate_gradient_descent_2d',
+        'animate_training_loop', 'animate_decision_boundary',
     ]
     for helper in _self_playing_helpers:
         # self.play(helper(self, ...), run_time=X) → helper(self, ...)
@@ -975,9 +1202,31 @@ def sanitize_script(code: str) -> str:
             code,
         )
 
+    # ── CRITICAL: Strip .group from diagram helper return accesses ──
+    # make_flowchart/make_timeline/make_pipeline/make_comparison_layout etc.
+    # return VGroups directly — they don't have a .group attribute.
+    # Claude writes `pipeline.group.shift(...)` but it should be `pipeline.shift(...)`
+    _prev = code
+    # pipeline.group.scale(0.8) → pipeline.scale(0.8)
+    code = re.sub(r'\.group\.', '.', code)
+    # FadeIn(pipeline.group) or pipeline.group, → FadeIn(pipeline) or pipeline,
+    code = re.sub(r'\.group(?=[\s),\]\n])', '', code)
+    code = _track("strip .group from diagram helpers", _prev, code)
+
+    # ── CRITICAL: Remove None from self.play() calls ──
+    # Claude sometimes passes helper return values (None) directly to self.play().
+    # self.play(None) → remove line; self.play(FadeOut(x), None) → self.play(FadeOut(x))
+    _prev = code
+    # Remove standalone self.play(None)
+    code = re.sub(r'^\s*self\.play\(\s*None\s*\)\s*$', '', code, flags=re.MULTILINE)
+    # Strip trailing None: self.play(FadeOut(x), None) → self.play(FadeOut(x))
+    code = re.sub(r',\s*None\s*\)', ')', code)
+    # Strip leading None: self.play(None, FadeIn(x)) → self.play(FadeIn(x))
+    code = re.sub(r'(self\.play\(\s*)None\s*,\s*', r'\1', code)
+    code = _track("strip None from self.play()", _prev, code)
+
     # ── CRITICAL: LaggedStartMap with direction as 3rd positional arg ──
-    # Claude writes LaggedStartMap(GrowFromEdge, group, LEFT, ...) but the 3rd
-    # positional arg is `arg_creator` (must be callable). Strip the direction.
+    _prev = code
     _directions = r'(?:LEFT|RIGHT|UP|DOWN|UL|UR|DL|DR|ORIGIN)'
     code = re.sub(
         rf'(LaggedStartMap\(\s*\w+,\s*\w+),\s*{_directions}\s*,',
@@ -985,7 +1234,26 @@ def sanitize_script(code: str) -> str:
         code,
     )
 
+    # ── CRITICAL: LaggedStartMap with lambda returning a bare direction ──
+    # Claude writes LaggedStartMap(GrowFromEdge, bars, lambda m: DOWN, ...)
+    # The lambda returns np.array([0,-1,0]) which gets *-unpacked into 3 scalar
+    # args, crashing with "'numpy.float64' has no attribute 'get_critical_point'".
+    # Fix: strip the lambda, pass direction as edge= kwarg instead.
+    code = re.sub(
+        rf'(LaggedStartMap\(\s*GrowFromEdge,\s*\w+),\s*lambda\s+\w+\s*:\s*({_directions})\s*,',
+        r'\1, edge=\2,',
+        code,
+    )
+    # Generic: strip any lambda returning bare direction for other animations
+    code = re.sub(
+        rf'(LaggedStartMap\(\s*(?!GrowFromEdge)\w+,\s*\w+),\s*lambda\s+\w+\s*:\s*{_directions}\s*,',
+        r'\1,',
+        code,
+    )
+    code = _track("LaggedStartMap direction fix", _prev, code)
+
     # ── CRITICAL: Python builtins not vectorized for numpy arrays ──
+    _prev = code
     # max(0, x) → np.maximum(0, x) in any lambda context
     code = re.sub(r'lambda\s+(\w+)\s*:\s*max\((\d+),\s*\1\)', r'lambda \1: np.maximum(\2, \1)', code)
     code = re.sub(r'lambda\s+(\w+)\s*:\s*max\(\1,\s*(\d+)\)', r'lambda \1: np.maximum(\1, \2)', code)
@@ -994,8 +1262,10 @@ def sanitize_script(code: str) -> str:
     code = re.sub(r'lambda\s+(\w+)\s*:\s*min\(\1,\s*(\d+)\)', r'lambda \1: np.minimum(\1, \2)', code)
     # abs(x) → np.abs(x) in lambdas
     code = re.sub(r'lambda\s+(\w+)\s*:\s*abs\(', r'lambda \1: np.abs(', code)
+    code = _track("vectorize builtins (max/min/abs→np)", _prev, code)
 
     # ── HIGH: math.* → np.* (math module not vectorized) ──
+    _prev = code
     code = re.sub(r'\bmath\.sin\b', 'np.sin', code)
     code = re.sub(r'\bmath\.cos\b', 'np.cos', code)
     code = re.sub(r'\bmath\.tan\b', 'np.tan', code)
@@ -1010,19 +1280,33 @@ def sanitize_script(code: str) -> str:
     code = re.sub(r'\bmath\.fabs\b', 'np.abs', code)
     # Remove import math (now unnecessary)
     code = re.sub(r'^\s*import math\s*$', '', code, flags=re.MULTILINE)
+    code = _track("math→np conversion", _prev, code)
 
     # ── HIGH: 3D/Camera removal (2D scenes only) ──
+    _prev = code
     code = re.sub(r'^\s*self\.move_camera\(.*?\)\s*$', '', code, flags=re.MULTILINE)
     code = re.sub(r'^\s*self\.set_camera_orientation\(.*?\)\s*$', '', code, flags=re.MULTILINE)
     code = re.sub(r'\bThreeDAxes\b', 'Axes', code)
     code = re.sub(r'^\s*self\.add_fixed_in_frame_mobjects\(.*?\)\s*$', '', code, flags=re.MULTILINE)
 
+    # ── HIGH: Octoflash3DScene → OctoflashScene (no 3D support) ──
+    code = re.sub(r'\bOctoflash3DScene\b', 'OctoflashScene', code)
+
+    # ── HIGH: Arrow3D → Arrow (2D only) ──
+    # Claude uses Arrow3D with 3D coords; convert to 2D Arrow, strip z-coordinate
+    code = re.sub(r'\bArrow3D\b', 'Arrow', code)
+
+    # ── HIGH: Surface / ThreeDScene removal ──
+    code = re.sub(r'\bThreeDScene\b', 'Scene', code)
+    code = re.sub(r'^\s*.*\bSurface\s*\(.*$', '', code, flags=re.MULTILINE)
+
     # ── HIGH: Strip 3D kwargs from Axes (z_range, z_length) ──
-    # Claude sometimes passes z_range/z_length to 2D Axes which crashes
     code = re.sub(r',\s*z_range\s*=\s*\[[^\]]*\]', '', code)
     code = re.sub(r',\s*z_length\s*=\s*[\d.]+', '', code)
+    code = _track("3D removal (ThreeDAxes/Arrow3D/camera/z_range)", _prev, code)
 
     # ── HIGH: Old animation names (manimlib removals) ──
+    _prev = code
     code = re.sub(r'\bFadeInFromDown\b', 'FadeIn', code)
     code = re.sub(r'\bFadeInFromLarge\b', 'FadeIn', code)
     code = re.sub(r'\bFadeOutAndShiftDown\b', 'FadeOut', code)
@@ -1034,6 +1318,7 @@ def sanitize_script(code: str) -> str:
     code = re.sub(r'\bplay_all\b', 'play', code)
     code = re.sub(r'self\.dither\(', 'self.wait(', code)
     code = re.sub(r'^\s*self\.embed\(\)\s*$', '', code, flags=re.MULTILINE)
+    code = _track("old manimlib animation names", _prev, code)
 
     # ── HIGH: GraphScene removal ──
     code = re.sub(r'\(GraphScene\)', '(Scene)', code)
@@ -1086,6 +1371,11 @@ def sanitize_script(code: str) -> str:
 
     # ── LOW: Clean up empty lines from removals ──
     code = re.sub(r'\n{3,}', '\n\n', code)
+
+    if fixes_applied:
+        logger.info("sanitize_script applied %d fixes: %s", len(fixes_applied), ", ".join(fixes_applied))
+    else:
+        logger.info("sanitize_script: no fixes needed")
 
     return code
 
