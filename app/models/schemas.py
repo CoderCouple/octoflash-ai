@@ -76,6 +76,9 @@ class VideoUpdateRequest(BaseModel):
     orientation: str | None = None
     quality: str | None = None
     voiceover: bool | None = None
+    youtube_title: str | None = None
+    youtube_description: str | None = None
+    youtube_tags: str | None = None
 
 
 class ChannelRequest(BaseModel):

@@ -227,7 +227,21 @@ def upload_to_youtube(
 
     youtube = _get_youtube_service()
 
-    tags_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
+    # Sanitize tags — YouTube rejects <, >, quotes; total character count must be ≤500
+    raw_tags = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
+    tags_list = []
+    total_chars = 0
+    for t in raw_tags:
+        # Strip leading # and disallowed characters
+        clean = t.lstrip("#").replace("<", "").replace(">", "").replace('"', "").replace("'", "").strip()
+        if not clean or len(clean) > 100:
+            continue
+        # YouTube counts tags with spaces with extra +2 (treated as quoted)
+        cost = len(clean) + (2 if " " in clean else 0)
+        if total_chars + cost + (1 if tags_list else 0) > 480:  # leave headroom for #Shorts
+            break
+        tags_list.append(clean)
+        total_chars += cost + (1 if len(tags_list) > 1 else 0)
 
     # For Shorts: add #Shorts tag and ensure title has #Shorts
     if video_type == "shorts":
@@ -240,7 +254,7 @@ def upload_to_youtube(
         "snippet": {
             "title": title[:100],
             "description": description[:5000],
-            "tags": tags_list[:500],
+            "tags": tags_list,
             "categoryId": "28",  # Science & Technology
         },
         "status": {

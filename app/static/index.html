@@ -2138,6 +2138,22 @@
           fetchScript(data.job_id);
           fetchOutputFrames(data.job_id);
           showPublishSection();
+          // Rehydrate YouTube metadata if previously generated (survives page refresh)
+          if (data.youtube_title || data.youtube_description || data.youtube_tags) {
+            const ytSection = document.getElementById('ytMetadataSection');
+            const ytLoading = document.getElementById('ytMetadataLoading');
+            const ytContent = document.getElementById('ytMetadataContent');
+            ytSection.style.display = 'block';
+            ytLoading.style.display = 'none';
+            ytContent.style.display = 'block';
+            document.getElementById('ytTitle').textContent = data.youtube_title || '';
+            document.getElementById('ytDescription').textContent = data.youtube_description || '';
+            document.getElementById('ytTags').textContent = data.youtube_tags || '';
+            // Pre-fill the publish form fields too
+            document.getElementById('pubTitle').value = data.youtube_title || data.title || '';
+            document.getElementById('pubDescription').value = data.youtube_description || '';
+            document.getElementById('pubTags').value = data.youtube_tags || '';
+          }
         }
       }
 
@@ -2563,14 +2579,19 @@
         document.getElementById('ytDescription').textContent = meta.description;
         document.getElementById('ytTags').textContent = meta.tags;
 
-        // Sync YT metadata to Firebase
+        // Sync YT metadata to Firebase so it persists across refreshes
         const fbVideoId = window._currentFirebaseVideoId;
         if (fbVideoId) {
           fetch(API_BASE + `/api/videos/${fbVideoId}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title: meta.title }),
-          }).catch(err => console.warn('Firebase title sync failed:', err));
+            body: JSON.stringify({
+              title: meta.title,
+              youtube_title: meta.title,
+              youtube_description: meta.description,
+              youtube_tags: meta.tags,
+            }),
+          }).catch(err => console.warn('Firebase metadata sync failed:', err));
         }
 
         loading.style.display = 'none';
@@ -2681,9 +2702,13 @@
       const ytDesc = document.getElementById('ytDescription');
       const ytTags = document.getElementById('ytTags');
 
-      document.getElementById('pubTitle').value = ytTitle?.textContent || document.getElementById('genTitle')?.value || '';
-      document.getElementById('pubDescription').value = ytDesc?.textContent || '';
-      document.getElementById('pubTags').value = ytTags?.textContent || '';
+      // Only fill if not already populated (preserve hydrated values from Firebase on refresh)
+      const pubTitle = document.getElementById('pubTitle');
+      const pubDesc = document.getElementById('pubDescription');
+      const pubTags = document.getElementById('pubTags');
+      if (!pubTitle.value) pubTitle.value = ytTitle?.textContent || document.getElementById('genTitle')?.value || '';
+      if (!pubDesc.value) pubDesc.value = ytDesc?.textContent || '';
+      if (!pubTags.value) pubTags.value = ytTags?.textContent || '';
 
       // Reset result
       const result = document.getElementById('pubResult');
@@ -2716,6 +2741,7 @@
         if (data.connected) {
           if (statusEl) { statusEl.textContent = 'Connected'; statusEl.className = 'platform-status connected'; }
           if (actionsEl) actionsEl.innerHTML = `<button class="connect-btn connected-btn">Connected</button><button class="disconnect-btn" onclick="disconnectPlatform('${platform}')">Disconnect</button>`;
+          if (platform === 'youtube') fetchPlaylists();
         } else {
           if (statusEl) { statusEl.textContent = 'Not connected'; statusEl.className = 'platform-status'; }
           if (actionsEl) actionsEl.innerHTML = `<button class="connect-btn" onclick="connectPlatform('${platform}')">Connect</button>`;
@@ -2787,19 +2813,31 @@
       const submitBtn = document.getElementById('pubSubmitBtn');
       const result = document.getElementById('pubResult');
 
-      // Collect all platforms that are currently connected
-      const connectedPlatforms = Object.entries(window._platformConnected || {})
-        .filter(([_, ok]) => ok).map(([p]) => p);
-
-      if (!connectedPlatforms.length) {
-        alert('Connect at least one platform first');
+      // YouTube-only for now — other platforms have OAuth scaffolding but aren't enabled here
+      if (!window._platformConnected?.youtube) {
+        alert('Connect YouTube first');
         return;
       }
+      const connectedPlatforms = ['youtube'];
 
       submitBtn.disabled = true;
       submitBtn.textContent = 'Publishing...';
       result.className = 'publish-result uploading';
-      result.textContent = `Uploading to ${connectedPlatforms.join(', ')}...`;
+      result.textContent = 'Uploading to YouTube...';
+
+      // Persist any manual edits before publishing
+      const fbVideoId = window._currentFirebaseVideoId;
+      if (fbVideoId) {
+        fetch(API_BASE + `/api/videos/${fbVideoId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            youtube_title: document.getElementById('pubTitle').value,
+            youtube_description: document.getElementById('pubDescription').value,
+            youtube_tags: document.getElementById('pubTags').value,
+          }),
+        }).catch(() => {});
+      }
 
       try {
         const res = await fetch(API_BASE + '/publish', {
