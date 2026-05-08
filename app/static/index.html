@@ -3,10 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Octoflash — AI Video Generator</title>
+  <title>Octoflash AI — AI Video Studio</title>
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="icon" type="image/png" sizes="64x64" href="/static/favicon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -420,6 +424,122 @@
 
     .download-link:hover { background: #f3f4f6; }
 
+    /* ── Publish Section ─────────────────────────────────────── */
+    .platform-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .platform-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      background: #f9fafb;
+    }
+
+    .platform-item.disabled { opacity: 0.5; }
+
+    .platform-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+      flex-shrink: 0;
+    }
+
+    .platform-info { flex: 1; }
+    .platform-name { font-weight: 600; font-size: 0.9rem; }
+    .platform-status { font-size: 0.75rem; color: #9ca3af; margin-top: 2px; }
+    .platform-status.connected { color: #16a34a; }
+
+    .coming-soon-badge {
+      font-size: 0.65rem;
+      font-weight: 600;
+      color: #9ca3af;
+      background: #f3f4f6;
+      padding: 3px 8px;
+      border-radius: 6px;
+    }
+
+    .connect-btn {
+      padding: 6px 14px;
+      border-radius: 6px;
+      border: 1px solid #e5e7eb;
+      background: #fff;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      color: #7c3aed;
+      transition: background 0.2s;
+    }
+    .connect-btn:hover { background: #f3f0ff; }
+    .connect-btn.connected-btn {
+      color: #16a34a;
+      border-color: #bbf7d0;
+      background: #f0fdf4;
+      cursor: default;
+    }
+    .disconnect-btn {
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid #fecaca;
+      background: #fff;
+      font-size: 0.7rem;
+      font-weight: 500;
+      cursor: pointer;
+      color: #dc2626;
+      margin-left: 6px;
+    }
+    .disconnect-btn:hover { background: #fef2f2; }
+
+    .publish-form .input-group { margin-bottom: 12px; }
+    .publish-form label { font-size: 0.78rem; font-weight: 600; color: #6b7280; margin-bottom: 4px; display: block; }
+    .publish-form input, .publish-form textarea, .publish-form select {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-family: inherit;
+    }
+    .publish-form textarea { resize: vertical; min-height: 80px; }
+
+    .publish-submit-btn {
+      width: 100%;
+      padding: 12px;
+      background: linear-gradient(135deg, #7c3aed, #4fc3f7);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      font-weight: 700;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: opacity 0.2s;
+    }
+    .publish-submit-btn:hover { opacity: 0.9; }
+    .publish-submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .publish-result {
+      margin-top: 16px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      font-size: 0.85rem;
+      display: none;
+    }
+    .publish-result.success { display: block; background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+    .publish-result.error { display: block; background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+    .publish-result.uploading { display: block; background: #f3f0ff; color: #7c3aed; border: 1px solid #e9d5ff; }
+    .publish-result a { color: inherit; font-weight: 600; }
+
     /* ── Meta Cards ─────────────────────────────────────────── */
     .meta-row {
       display: flex;
@@ -717,6 +837,226 @@
 
     .details.active { display: block; }
 
+    /* ── Home View ──────────────────────────────────────────── */
+    .home-hero {
+      text-align: center;
+      padding: 40px 0 24px;
+    }
+    .home-hero h1 { font-size: 2.2rem; font-weight: 800; letter-spacing: -1px; margin-bottom: 8px; }
+    .home-hero h1 span { background: linear-gradient(135deg, #4fc3f7, #7c3aed); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .home-hero p { color: #6b7280; font-size: 0.95rem; }
+
+    .quick-add {
+      display: flex;
+      gap: 8px;
+      max-width: 600px;
+      margin: 24px auto 32px;
+    }
+    .quick-add input {
+      flex: 1;
+      padding: 10px 14px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      outline: none;
+    }
+    .quick-add input:focus { border-color: #7c3aed; }
+    .quick-add button {
+      padding: 10px 24px;
+      background: linear-gradient(135deg, #4fc3f7, #7c3aed);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .quick-add button:hover { opacity: 0.9; }
+    .quick-add button:disabled { opacity: 0.5; }
+
+    .video-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .video-list-item {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 12px 16px;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: box-shadow 0.15s, border-color 0.15s;
+    }
+    .video-list-item:hover {
+      border-color: #d1d5db;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    .video-thumb {
+      width: 80px;
+      height: 45px;
+      border-radius: 6px;
+      object-fit: cover;
+      background: #f3f4f6;
+      flex-shrink: 0;
+    }
+    .video-info { flex: 1; min-width: 0; }
+    .video-info .video-title {
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: #1a1a2e;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .video-info .video-url {
+      font-size: 0.72rem;
+      color: #9ca3af;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .video-info .video-time {
+      font-size: 0.68rem;
+      color: #d1d5db;
+      margin-top: 2px;
+    }
+
+    .status-badge {
+      font-size: 0.68rem;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .status-badge.queued { background: #f3f4f6; color: #6b7280; }
+    .status-badge.analyzing, .status-badge.generating {
+      background: #fef9c3; color: #a16207;
+      animation: pulse-badge 1.5s infinite;
+    }
+    .status-badge.analyzed { background: #dbeafe; color: #1d4ed8; }
+    .status-badge.generated { background: #d1fae5; color: #065f46; }
+    .status-badge.publishing { background: #ede9fe; color: #7c3aed; animation: pulse-badge 1.5s infinite; }
+    .status-badge.published { background: #ede9fe; color: #7c3aed; }
+    .status-badge.failed { background: #fee2e2; color: #dc2626; }
+
+    @keyframes pulse-badge {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: #9ca3af;
+    }
+    .empty-state p { font-size: 0.9rem; margin-top: 8px; }
+
+    .nav-home-link {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #7c3aed;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .nav-home-link:hover { text-decoration: underline; }
+
+    /* ── Channels View ─────────────────────────────────────── */
+    .channel-list { display:flex; flex-direction:column; gap:8px; }
+    .channel-row {
+      background:#fff; border:1px solid #e5e7eb; border-radius:10px;
+      padding:12px 16px;
+    }
+    .channel-head {
+      display:flex; align-items:center; gap:14px; cursor:pointer;
+    }
+    .channel-head .ch-name { font-weight:600; font-size:0.92rem; color:#1a1a2e; }
+    .channel-head .ch-handle { font-size:0.74rem; color:#9ca3af; }
+    .channel-head .ch-info { flex:1; min-width:0; }
+    .channel-head .ch-actions { display:flex; gap:6px; }
+    .channel-head button {
+      width:auto; padding:6px 12px; font-size:0.78rem; height:auto; margin:0;
+    }
+    .ch-fetch-btn { background:#f3f0ff; color:#7c3aed; border:1px solid #e5e7eb; }
+    .ch-delete-btn { background:#fee2e2; color:#dc2626; border:1px solid #fecaca; }
+    .shorts-grid {
+      display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr));
+      gap:10px; margin-top:14px; padding-top:14px; border-top:1px solid #f3f4f6;
+    }
+    .short-card {
+      background:#f9fafb; border-radius:8px; overflow:hidden;
+      border:1px solid #f3f4f6; cursor:pointer; transition:transform 0.12s;
+      display:flex; flex-direction:column;
+    }
+    .short-card:hover { transform:translateY(-2px); border-color:#7c3aed; }
+    .short-card img { width:100%; aspect-ratio:9/16; object-fit:cover; background:#000; }
+    .short-card .short-title {
+      padding:6px 8px; font-size:0.7rem; color:#1a1a2e;
+      display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+      overflow:hidden;
+    }
+    .short-card .short-queue-btn {
+      width:100%; padding:6px; font-size:0.7rem; background:#7c3aed;
+      color:#fff; border:none; cursor:pointer; margin:0; height:auto;
+      border-radius:0;
+    }
+    .short-card .short-queue-btn:disabled { background:#10b981; cursor:default; }
+    .add-channel-form {
+      display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;
+    }
+    .add-channel-form input {
+      flex:1; min-width:200px; padding:10px 14px; border:1px solid #e5e7eb;
+      border-radius:8px; font-size:0.9rem; outline:none;
+    }
+    .add-channel-form input:focus { border-color:#7c3aed; }
+    .add-channel-form button {
+      padding:10px 20px; background:linear-gradient(135deg,#4fc3f7,#7c3aed);
+      color:#fff; border:none; border-radius:8px; font-weight:600;
+      font-size:0.9rem; cursor:pointer;
+    }
+
+    /* ── Channel Detail Page (shorts in rows) ───────────────── */
+    .channel-detail-header {
+      display:flex; align-items:center; gap:14px; padding:16px;
+      background:#fff; border:1px solid #e5e7eb; border-radius:10px; margin-bottom:16px;
+    }
+    .channel-detail-header h2 { font-size:1.2rem; color:#1a1a2e; font-weight:700; }
+    .channel-detail-header .ch-meta { font-size:0.78rem; color:#9ca3af; margin-top:2px; }
+    .shorts-rows { display:flex; flex-direction:column; gap:8px; }
+    .short-row {
+      display:flex; align-items:center; gap:14px; padding:10px 14px;
+      background:#fff; border:1px solid #e5e7eb; border-radius:10px;
+      transition:box-shadow 0.15s, border-color 0.15s;
+    }
+    .short-row:hover { border-color:#d1d5db; box-shadow:0 2px 8px rgba(0,0,0,0.06); }
+    .short-row a.thumb-link { display:block; flex-shrink:0; }
+    .short-row .thumb { width:90px; aspect-ratio:9/16; object-fit:cover; border-radius:6px; background:#000; }
+    .short-row .info { flex:1; min-width:0; }
+    .short-row .info .title {
+      font-size:0.88rem; font-weight:600; color:#1a1a2e;
+      display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+      overflow:hidden;
+    }
+    .short-row .info .meta { font-size:0.72rem; color:#9ca3af; margin-top:2px; }
+    .short-row button {
+      width:auto; padding:8px 18px; height:auto; margin:0;
+      background:linear-gradient(135deg,#4fc3f7,#7c3aed); color:#fff;
+      border:none; border-radius:8px; font-weight:600; font-size:0.82rem;
+      cursor:pointer; flex-shrink:0;
+    }
+    .short-row button:disabled { background:#10b981; cursor:default; }
+    .back-link {
+      display:inline-block; font-size:0.82rem; color:#7c3aed;
+      margin-bottom:12px; text-decoration:none; cursor:pointer;
+    }
+    .back-link:hover { text-decoration:underline; }
+
     /* ── Responsive ─────────────────────────────────────────── */
     @media (max-width: 768px) {
       .hero h1 { font-size: 1.8rem; }
@@ -726,6 +1066,8 @@
       .video-comparison.portrait .video-pane-body iframe,
       .video-comparison.portrait .video-pane-body video { width: 80%; }
       .navbar-inner { height: 52px; }
+      .quick-add { flex-direction: column; }
+      .video-thumb { width: 60px; height: 34px; }
     }
   </style>
 </head>
@@ -734,24 +1076,94 @@
   <!-- ══════════ NAVBAR ══════════ -->
   <nav class="navbar">
     <div class="navbar-inner">
-      <a class="logo" href="/">
+      <a class="logo" href="#home" onclick="location.hash='#home'">
         <div class="logo-mark">
           <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
           </svg>
         </div>
-        <span class="logo-text"><span>Octoflash</span></span>
+        <span class="logo-text"><span>Octoflash AI</span></span>
       </a>
+      <a class="nav-home-link" href="#home">All Videos</a>
+      <a class="nav-home-link" href="#channels">Channels</a>
       <span class="nav-badge">AI Video Studio</span>
     </div>
   </nav>
 
   <div class="container">
 
+    <!-- ══════════ HOME VIEW ══════════ -->
+    <div id="app-home-view" style="display:none;">
+      <div class="home-hero">
+        <h1>Your <span>Videos</span></h1>
+        <p>Queue YouTube URLs, auto-process, then preview and publish.</p>
+      </div>
+
+      <div class="quick-add">
+        <input type="text" id="quickAddUrl" placeholder="Paste a YouTube URL...">
+        <button id="quickAddBtn" onclick="quickAddVideo()">Queue</button>
+        <button id="manualBtn" onclick="manualAnalyze()" style="background:#f3f0ff;color:#7c3aed;border:1px solid #e5e7eb;">Analyze Now</button>
+      </div>
+
+      <div class="video-list" id="videoList">
+        <div class="empty-state" id="emptyState">
+          <p>No videos yet. Paste a YouTube URL above to get started.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════ CHANNELS VIEW ══════════ -->
+    <div id="app-channels-view" style="display:none;">
+      <div class="home-hero">
+        <h1>Followed <span>Channels</span></h1>
+        <p>Channels that produce similar content. Click "Fetch Shorts" to browse and queue them.</p>
+      </div>
+
+      <div class="add-channel-form">
+        <input type="text" id="channelUrl" placeholder="https://youtube.com/@channelname">
+        <input type="text" id="channelName" placeholder="Display name (optional)" style="flex:0 0 200px;">
+        <button id="addChannelBtn" onclick="addChannel()">Add Channel</button>
+      </div>
+
+      <div class="channel-list" id="channelList">
+        <div class="empty-state" id="channelsEmptyState">
+          <p>No channels followed yet. Add one above.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════ CHANNEL DETAIL VIEW ══════════ -->
+    <div id="app-channel-view" style="display:none;">
+      <a class="back-link" href="#channels">← Back to Channels</a>
+      <div class="channel-detail-header">
+        <div style="flex:1;">
+          <h2 id="chDetailName">Channel</h2>
+          <div class="ch-meta" id="chDetailHandle"></div>
+        </div>
+        <button id="chRefreshBtn" style="padding:8px 14px; background:#f3f0ff; color:#7c3aed; border:1px solid #e5e7eb; border-radius:8px; font-size:0.82rem; font-weight:600; cursor:pointer;">Refresh Shorts</button>
+      </div>
+      <div class="shorts-rows" id="shortsRows">
+        <div class="empty-state" style="padding:30px;">
+          <p>Loading shorts...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════ VIDEO DETAIL VIEW ══════════ -->
+    <div id="app-video-view" style="display:none;">
+
     <!-- ══════════ HERO ══════════ -->
     <div class="hero">
       <h1>Analyze. Animate. <span>Publish.</span></h1>
       <p>Turn any YouTube video into a rich Manim animation with AI-powered script generation, voiceover, and self-correction.</p>
+    </div>
+
+    <!-- Source attribution (when video came from a channel) -->
+    <div id="sourceAttribution" style="display:none; padding:12px 16px; background:#f3f0ff; border:1px solid #ddd6fe; border-radius:10px; margin-bottom:14px; font-size:0.85rem; color:#1a1a2e;">
+      <span style="color:#6b7280;">Sourced from</span>
+      <a id="sourceChannelLink" href="#" style="color:#7c3aed; font-weight:600; text-decoration:none;">channel</a>
+      <span style="color:#6b7280;">•</span>
+      <a id="sourceShortLink" href="#" target="_blank" rel="noopener" style="color:#7c3aed; text-decoration:none;">View original short ↗</a>
     </div>
 
     <!-- ══════════ STEP 1: Analyze ══════════ -->
@@ -825,12 +1237,12 @@
     <!-- ══════════ SOURCE FRAMES ══════════ -->
     <div id="sourceFramesSection" style="display:none;">
       <div class="result-section">
-        <div class="result-header open" onclick="toggle(this)">
+        <div class="result-header" onclick="toggle(this)">
           <h3>Source Frames</h3>
           <span class="badge" id="framesBadge">0</span>
-          <span class="arrow" style="transform:rotate(90deg)">&#9654;</span>
+          <span class="arrow">&#9654;</span>
         </div>
-        <div class="result-body open">
+        <div class="result-body">
           <div class="frames-grid" id="resFrames"></div>
         </div>
       </div>
@@ -839,12 +1251,12 @@
     <!-- ══════════ OUTPUT FRAMES ══════════ -->
     <div id="outputFramesSection" style="display:none;">
       <div class="result-section">
-        <div class="result-header open" onclick="toggle(this)">
+        <div class="result-header" onclick="toggle(this)">
           <h3>Output Frames</h3>
           <span class="badge" id="outputFramesBadge">0</span>
-          <span class="arrow" style="transform:rotate(90deg)">&#9654;</span>
+          <span class="arrow">&#9654;</span>
         </div>
-        <div class="result-body open">
+        <div class="result-body">
           <div class="frames-grid" id="outputFramesGrid"></div>
         </div>
       </div>
@@ -897,7 +1309,10 @@
             </select>
           </div>
         </div>
-        <button type="button" id="generateBtn" class="btn-primary btn-generate" onclick="startGenerate()">Generate Video</button>
+        <div style="display:flex; gap:8px;">
+          <button type="button" id="generateBtn" class="btn-primary btn-generate" onclick="startGenerate()" style="flex:1; width:auto;">Generate Video</button>
+          <button type="button" id="regenerateBtn" class="btn-primary btn-generate" onclick="startGenerate()" style="width:auto; padding:14px 24px; background:linear-gradient(135deg,#f59e0b,#ef4444); display:none;">Regenerate</button>
+        </div>
       </div>
     </div>
 
@@ -941,6 +1356,119 @@
             <button class="copy-btn" onclick="copyAllMetadata()">Copy All</button>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- ══════════ STEP 3: Publish ══════════ -->
+    <div id="publishSection" style="display:none;">
+      <div class="card">
+        <div class="card-header">
+          <span class="step-num">3</span>
+          Publish
+        </div>
+
+        <!-- Phase 1: Preview button -->
+        <div id="pubPreviewPhase" style="text-align:center; padding:12px 0;">
+          <p style="color:#6b7280; font-size:0.85rem; margin-bottom:12px;">Review your video and metadata before publishing.</p>
+          <button class="publish-submit-btn" style="width:auto; padding:10px 32px;" onclick="openPublishPreview()">Preview &amp; Edit</button>
+        </div>
+
+        <!-- Phase 2: Full preview + edit (hidden until Preview clicked) -->
+        <div id="pubEditPhase" style="display:none;">
+
+          <!-- Video Preview + Platforms side by side -->
+          <div style="display:flex; gap:20px; margin-bottom:20px; flex-wrap:wrap;">
+            <!-- Preview -->
+            <div style="flex:0 0 200px;">
+              <label style="font-size:0.78rem; font-weight:600; color:#6b7280; margin-bottom:6px; display:block;">Preview</label>
+              <video id="pubPreview" controls style="width:200px; border-radius:10px; border:1px solid #e5e7eb; background:#000;"></video>
+            </div>
+
+            <!-- Platforms -->
+            <div style="flex:1; min-width:240px;">
+              <div class="platform-list">
+                <div class="platform-item" id="platformYoutube">
+                  <div class="platform-icon" style="background:#ff0000;color:#fff;">&#9654;</div>
+                  <div class="platform-info">
+                    <div class="platform-name">YouTube</div>
+                    <div class="platform-status" id="ytConnectStatus">Checking...</div>
+                  </div>
+                  <div id="ytConnectActions">
+                    <button class="connect-btn" id="ytConnectBtn" onclick="connectYouTube()">Connect</button>
+                  </div>
+                </div>
+                <div class="platform-item disabled">
+                  <div class="platform-icon" style="background:#000;color:#fff;">T</div>
+                  <div class="platform-info">
+                    <div class="platform-name">TikTok</div>
+                    <div class="platform-status">Requires developer app approval</div>
+                  </div>
+                  <span class="coming-soon-badge">Coming Soon</span>
+                </div>
+                <div class="platform-item disabled">
+                  <div class="platform-icon" style="background:linear-gradient(45deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888);color:#fff;">I</div>
+                  <div class="platform-info">
+                    <div class="platform-name">Instagram</div>
+                    <div class="platform-status">Requires developer app approval</div>
+                  </div>
+                  <span class="coming-soon-badge">Coming Soon</span>
+                </div>
+                <div class="platform-item disabled">
+                  <div class="platform-icon" style="background:#0a66c2;color:#fff;">in</div>
+                  <div class="platform-info">
+                    <div class="platform-name">LinkedIn</div>
+                    <div class="platform-status">Requires developer app approval</div>
+                  </div>
+                  <span class="coming-soon-badge">Coming Soon</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Metadata Form -->
+          <div class="publish-form">
+            <div class="input-group">
+              <label>Title</label>
+              <input type="text" id="pubTitle" maxlength="100">
+            </div>
+            <div class="input-group">
+              <label>Description</label>
+              <textarea id="pubDescription" rows="4"></textarea>
+            </div>
+            <div class="input-group">
+              <label>Tags (comma-separated)</label>
+              <input type="text" id="pubTags">
+            </div>
+            <div class="form-row" style="margin-bottom:12px;">
+              <div class="input-group">
+                <label>Video Type</label>
+                <select id="pubVideoType">
+                  <option value="shorts" selected>YouTube Shorts</option>
+                  <option value="regular">Regular Video</option>
+                </select>
+              </div>
+              <div class="input-group">
+                <label>Privacy</label>
+                <select id="pubPrivacy">
+                  <option value="public">Public</option>
+                  <option value="unlisted">Unlisted</option>
+                  <option value="private">Private</option>
+                </select>
+              </div>
+            </div>
+            <div class="input-group">
+              <label>Playlist <span style="font-weight:400; color:#9ca3af;">(optional)</span></label>
+              <select id="pubPlaylist" onchange="if(this.value==='__new__')document.getElementById('pubNewPlaylist').style.display='block'; else document.getElementById('pubNewPlaylist').style.display='none';">
+                <option value="">None</option>
+                <option value="__new__">+ Create new playlist...</option>
+              </select>
+              <input type="text" id="pubNewPlaylist" placeholder="New playlist name" style="display:none; margin-top:6px;">
+            </div>
+            <button class="publish-submit-btn" id="pubSubmitBtn" onclick="submitPublish()" disabled>Publish to YouTube</button>
+            <div class="publish-result" id="pubResult"></div>
+          </div>
+        </div>
+
       </div>
     </div>
 
@@ -993,6 +1521,8 @@
       </div>
     </div>
 
+    </div><!-- /app-video-view -->
+
     <!-- ══════════ FOOTER ══════════ -->
     <div class="footer">
       Octoflash &mdash; AI-powered Manim animation studio &middot; Built with FastAPI, Claude &amp; Manim CE
@@ -1017,7 +1547,633 @@
 
     let analysisData = null;
     let galleryImages = [];
+    let currentJobId = null;
+    let ytConnected = false;
     let galleryIndex = 0;
+    let firebaseDb = null;
+    let _homeUnsubscribe = null;
+    let _videoUnsubscribe = null;
+
+    // ── Firebase Init ──
+    async function initFirebase() {
+      try {
+        const cfg = {
+          apiKey: "AIzaSyAnuATLqPShhkgExpgpCVA6vTNXL6fh_kU",
+          authDomain: "octoflash-ai-68705.firebaseapp.com",
+          projectId: "octoflash-ai-68705",
+          storageBucket: "octoflash-ai-68705.firebasestorage.app",
+          messagingSenderId: "182198402410",
+          appId: "1:182198402410:web:14b838eecacd2fd1103913",
+        };
+        firebase.initializeApp(cfg);
+        firebaseDb = firebase.firestore();
+        console.log('Firebase client initialized');
+      } catch (err) {
+        console.warn('Firebase init failed, using REST fallback:', err);
+      }
+    }
+
+    // ── SPA Router ──
+    function handleRoute() {
+      const hash = location.hash || '#home';
+
+      // Cleanup previous listeners
+      if (_homeUnsubscribe) { _homeUnsubscribe(); _homeUnsubscribe = null; }
+      if (_videoUnsubscribe) { _videoUnsubscribe(); _videoUnsubscribe = null; }
+      if (window._channelsUnsubscribe) { window._channelsUnsubscribe(); window._channelsUnsubscribe = null; }
+
+      const homeView = document.getElementById('app-home-view');
+      const videoView = document.getElementById('app-video-view');
+      const channelsView = document.getElementById('app-channels-view');
+      const channelView = document.getElementById('app-channel-view');
+
+      homeView.style.display = 'none';
+      videoView.style.display = 'none';
+      channelsView.style.display = 'none';
+      channelView.style.display = 'none';
+
+      if (hash.startsWith('#video/')) {
+        const videoId = hash.replace('#video/', '');
+        videoView.style.display = 'block';
+        loadVideoFromFirebase(videoId);
+      } else if (hash.startsWith('#channel/')) {
+        const channelId = hash.replace('#channel/', '');
+        channelView.style.display = 'block';
+        showChannelDetail(channelId);
+      } else if (hash === '#channels') {
+        channelsView.style.display = 'block';
+        showChannelsView();
+      } else {
+        homeView.style.display = 'block';
+        showHomeView();
+      }
+    }
+
+    window.addEventListener('hashchange', handleRoute);
+    document.addEventListener('DOMContentLoaded', async () => {
+      await initFirebase();
+      handleRoute();
+    });
+
+    // ── Home View ──
+    function showHomeView() {
+      if (firebaseDb) {
+        // Real-time listener
+        _homeUnsubscribe = firebaseDb.collection('videos')
+          .orderBy('created_at', 'desc')
+          .limit(50)
+          .onSnapshot(snap => {
+            renderVideoList(snap.docs.map(d => d.data()));
+          }, err => {
+            console.warn('Firestore home listener error:', err);
+            fetchVideoListREST();
+          });
+      } else {
+        fetchVideoListREST();
+      }
+    }
+
+    async function fetchVideoListREST() {
+      try {
+        const res = await fetch(API_BASE + '/api/videos');
+        const data = await res.json();
+        renderVideoList(data.videos || []);
+      } catch (err) {
+        console.warn('REST video list error:', err);
+        renderVideoList([]);
+      }
+    }
+
+    function renderVideoList(videos) {
+      const list = document.getElementById('videoList');
+      const empty = document.getElementById('emptyState');
+
+      if (!videos.length) {
+        list.innerHTML = '';
+        list.appendChild(empty);
+        empty.style.display = 'block';
+        return;
+      }
+
+      empty.style.display = 'none';
+      list.innerHTML = videos.map(v => {
+        const ytId = extractYouTubeId(v.source_url || '');
+        const thumb = ytId ? `https://img.youtube.com/vi/${ytId}/mqdefault.jpg` : '';
+        const title = v.title || v.source_url || 'Untitled';
+        const status = v.status || 'queued';
+        const timeAgo = formatTimeAgo(v.created_at);
+        return `
+          <div class="video-list-item" onclick="location.hash='#video/${v.video_id}'">
+            ${thumb ? `<img class="video-thumb" src="${thumb}" alt="">` : '<div class="video-thumb"></div>'}
+            <div class="video-info">
+              <div class="video-title">${escapeHtml(title)}</div>
+              <div class="video-url">${escapeHtml(v.source_url || '')}</div>
+              <div class="video-time">${timeAgo}</div>
+            </div>
+            <span class="status-badge ${status}">${status}</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function quickAddVideo() {
+      const input = document.getElementById('quickAddUrl');
+      const btn = document.getElementById('quickAddBtn');
+      const url = input.value.trim();
+      if (!url) return;
+
+      btn.disabled = true;
+      btn.textContent = 'Queuing...';
+
+      try {
+        const res = await fetch(API_BASE + '/api/videos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url, source: 'web' }),
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || 'Queue failed');
+        }
+        input.value = '';
+        // If no firebase, refresh list
+        if (!firebaseDb) fetchVideoListREST();
+      } catch (err) {
+        alert('Queue failed: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Queue';
+      }
+    }
+
+    async function manualAnalyze() {
+      const input = document.getElementById('quickAddUrl');
+      const btn = document.getElementById('manualBtn');
+      const url = input.value.trim();
+      if (!url) return;
+
+      btn.disabled = true;
+      btn.textContent = 'Creating...';
+
+      try {
+        // Create a Firebase video doc
+        const res = await fetch(API_BASE + '/api/videos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url, source: 'web' }),
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || 'Failed to create video');
+        }
+        const video = await res.json();
+        input.value = '';
+
+        // Navigate to the video detail page — pre-fill URL for manual analyze
+        location.hash = `#video/${video.video_id}`;
+      } catch (err) {
+        alert('Failed: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Analyze Now';
+      }
+    }
+
+    // ── Channels View ──
+    function showChannelsView() {
+      if (firebaseDb) {
+        window._channelsUnsubscribe = firebaseDb.collection('channels')
+          .orderBy('created_at', 'desc')
+          .limit(100)
+          .onSnapshot(snap => {
+            renderChannelList(snap.docs.map(d => d.data()));
+          }, err => {
+            console.warn('Channels listener error:', err);
+            fetchChannelsREST();
+          });
+      } else {
+        fetchChannelsREST();
+      }
+    }
+
+    async function fetchChannelsREST() {
+      try {
+        const res = await fetch(API_BASE + '/api/channels');
+        const data = await res.json();
+        renderChannelList(data.channels || []);
+      } catch (err) {
+        renderChannelList([]);
+      }
+    }
+
+    function renderChannelList(channels) {
+      const list = document.getElementById('channelList');
+      const empty = document.getElementById('channelsEmptyState');
+
+      if (!channels.length) {
+        list.innerHTML = '';
+        list.appendChild(empty);
+        empty.style.display = 'block';
+        return;
+      }
+      empty.style.display = 'none';
+
+      list.innerHTML = channels.map(c => `
+        <div class="channel-row" id="channel-${c.channel_id}">
+          <div class="channel-head">
+            <div class="ch-info" onclick="location.hash='#channel/${c.channel_id}'" style="cursor:pointer;">
+              <div class="ch-name">${escapeHtml(c.name || c.handle || c.url)}</div>
+              <div class="ch-handle">${escapeHtml(c.handle || c.url)}</div>
+            </div>
+            <div class="ch-actions">
+              <button class="ch-fetch-btn" onclick="location.hash='#channel/${c.channel_id}'">View Shorts</button>
+              <button class="ch-delete-btn" onclick="deleteChannel('${c.channel_id}')">×</button>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // ── Channel Detail Page ──
+    async function showChannelDetail(channelId) {
+      const nameEl = document.getElementById('chDetailName');
+      const handleEl = document.getElementById('chDetailHandle');
+      const refreshBtn = document.getElementById('chRefreshBtn');
+
+      // Fetch channel info
+      try {
+        const res = await fetch(API_BASE + '/api/channels');
+        const data = await res.json();
+        const ch = (data.channels || []).find(c => c.channel_id === channelId);
+        if (ch) {
+          nameEl.textContent = ch.name || ch.handle || 'Channel';
+          handleEl.textContent = ch.handle || ch.url || '';
+        } else {
+          nameEl.textContent = 'Channel not found';
+          handleEl.textContent = '';
+        }
+      } catch (err) {
+        console.warn('Channel info fetch failed:', err);
+      }
+
+      refreshBtn.onclick = () => loadChannelShorts(channelId, 50);
+      loadChannelShorts(channelId, 50);
+    }
+
+    async function loadChannelShorts(channelId, limit) {
+      const rows = document.getElementById('shortsRows');
+      rows.innerHTML = '<div class="empty-state" style="padding:30px;"><p>Loading shorts...</p></div>';
+      try {
+        // Fetch shorts list + used-shorts map in parallel
+        const [shortsRes, usedRes] = await Promise.all([
+          fetch(API_BASE + `/api/channels/${channelId}/shorts?limit=${limit}`),
+          fetch(API_BASE + `/api/channels/${channelId}/used-shorts`),
+        ]);
+        const data = await shortsRes.json();
+        const usedData = usedRes.ok ? await usedRes.json() : { used_shorts: {} };
+        const used = usedData.used_shorts || {};
+        if (!shortsRes.ok) throw new Error(data.detail || 'Failed');
+
+        const shorts = data.shorts || [];
+        if (!shorts.length) {
+          rows.innerHTML = '<div class="empty-state" style="padding:30px;"><p>No shorts found</p></div>';
+          return;
+        }
+
+        rows.innerHTML = shorts.map(s => {
+          const usage = used[s.id];
+          let actionHtml;
+          let badgeHtml = '';
+          if (usage) {
+            const statusClass = usage.status || 'queued';
+            badgeHtml = `<span class="status-badge ${statusClass}" style="margin-left:6px;">${statusClass}</span>`;
+            if (usage.published_url) {
+              actionHtml = `<a href="${usage.published_url}" target="_blank" rel="noopener" style="padding:8px 14px; background:#ede9fe; color:#7c3aed; text-decoration:none; border-radius:8px; font-size:0.78rem; font-weight:600;">View on YouTube ↗</a>`;
+            } else if (usage.video_id) {
+              actionHtml = `<a href="#video/${usage.video_id}" style="padding:8px 14px; background:#dbeafe; color:#1d4ed8; text-decoration:none; border-radius:8px; font-size:0.78rem; font-weight:600;">Open Generated</a>`;
+            } else {
+              actionHtml = `<button disabled>Queued</button>`;
+            }
+          } else {
+            actionHtml = `<button onclick="queueShort(this, '${s.url}', '${channelId}', '${s.id}')">Queue</button>`;
+          }
+          return `
+            <div class="short-row">
+              <a class="thumb-link" href="${s.url}" target="_blank" rel="noopener">
+                <img class="thumb" src="${s.thumbnail}" alt="" loading="lazy">
+              </a>
+              <div class="info">
+                <div class="title" title="${escapeHtml(s.title)}">${escapeHtml(s.title)}${badgeHtml}</div>
+                <div class="meta">${s.duration ? formatDuration(s.duration) + ' • ' : ''}<a href="${s.url}" target="_blank" rel="noopener" style="color:#9ca3af;">${escapeHtml(s.url)}</a></div>
+              </div>
+              ${actionHtml}
+            </div>
+          `;
+        }).join('');
+      } catch (err) {
+        rows.innerHTML = `<div class="empty-state" style="padding:30px; color:#dc2626;"><p>Error: ${escapeHtml(err.message)}</p></div>`;
+      }
+    }
+
+    function formatDuration(sec) {
+      if (!sec) return '';
+      const s = Math.floor(sec);
+      const m = Math.floor(s / 60);
+      const r = s % 60;
+      return `${m}:${r.toString().padStart(2,'0')}`;
+    }
+
+    async function addChannel() {
+      const urlInput = document.getElementById('channelUrl');
+      const nameInput = document.getElementById('channelName');
+      const btn = document.getElementById('addChannelBtn');
+      const url = urlInput.value.trim();
+      if (!url) return;
+
+      btn.disabled = true;
+      btn.textContent = 'Adding...';
+      try {
+        const res = await fetch(API_BASE + '/api/channels', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url, name: nameInput.value.trim() }),
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || 'Failed');
+        }
+        urlInput.value = '';
+        nameInput.value = '';
+        if (!firebaseDb) fetchChannelsREST();
+      } catch (err) {
+        alert('Failed: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Add Channel';
+      }
+    }
+
+    async function deleteChannel(channelId) {
+      if (!confirm('Unfollow this channel?')) return;
+      try {
+        await fetch(API_BASE + `/api/channels/${channelId}`, { method: 'DELETE' });
+        if (!firebaseDb) fetchChannelsREST();
+      } catch (err) {
+        alert('Failed: ' + err.message);
+      }
+    }
+
+    async function fetchShorts(channelId) {
+      const grid = document.getElementById(`shorts-${channelId}`);
+      if (!grid) return;
+
+      // Toggle: hide if already showing
+      if (grid.style.display === 'grid' && grid.dataset.loaded === 'true') {
+        grid.style.display = 'none';
+        return;
+      }
+
+      grid.style.display = 'grid';
+      grid.innerHTML = '<div style="padding:12px; color:#9ca3af; grid-column:1/-1;">Fetching shorts...</div>';
+      try {
+        const res = await fetch(API_BASE + `/api/channels/${channelId}/shorts?limit=5`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Fetch failed');
+
+        const shorts = data.shorts || [];
+        if (!shorts.length) {
+          grid.innerHTML = '<div style="padding:12px; color:#9ca3af; grid-column:1/-1;">No shorts found</div>';
+          return;
+        }
+
+        grid.innerHTML = shorts.map(s => `
+          <div class="short-card">
+            <a href="${s.url}" target="_blank" rel="noopener">
+              <img src="${s.thumbnail}" alt="" loading="lazy">
+            </a>
+            <div class="short-title" title="${escapeHtml(s.title)}">${escapeHtml(s.title)}</div>
+            <button class="short-queue-btn" onclick="queueShort(this, '${s.url}')">Queue</button>
+          </div>
+        `).join('');
+        grid.dataset.loaded = 'true';
+      } catch (err) {
+        grid.innerHTML = `<div style="padding:12px; color:#dc2626; grid-column:1/-1;">Error: ${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    async function queueShort(btn, url, channelId, youtubeId) {
+      btn.disabled = true;
+      btn.textContent = 'Queuing...';
+      try {
+        const body = { url, source: 'channel' };
+        if (channelId) body.channel_id = channelId;
+        if (youtubeId) body.source_short_youtube_id = youtubeId;
+        const res = await fetch(API_BASE + '/api/videos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || 'Failed');
+        }
+        btn.textContent = 'Queued ✓';
+      } catch (err) {
+        btn.textContent = 'Failed';
+        alert('Queue failed: ' + err.message);
+        setTimeout(() => { btn.disabled = false; btn.textContent = 'Queue'; }, 2000);
+      }
+    }
+
+    // ── Video Detail from Firebase ──
+    function loadVideoFromFirebase(videoId) {
+      if (firebaseDb) {
+        _videoUnsubscribe = firebaseDb.collection('videos').doc(videoId)
+          .onSnapshot(snap => {
+            if (snap.exists) {
+              hydrateVideoView(snap.data());
+            } else {
+              loadVideoFromREST(videoId);
+            }
+          }, err => {
+            console.warn('Firestore video listener error:', err);
+            loadVideoFromREST(videoId);
+          });
+      } else {
+        loadVideoFromREST(videoId);
+      }
+    }
+
+    async function loadVideoFromREST(videoId) {
+      try {
+        const res = await fetch(API_BASE + `/api/videos/${videoId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        hydrateVideoView(data);
+      } catch (err) {
+        console.warn('REST video load error:', err);
+      }
+    }
+
+    function hydrateVideoView(data) {
+      if (!data) return;
+      const status = data.status || '';
+
+      // Set analysisData for existing flow compatibility
+      if (data.transcript || data.description) {
+        analysisData = {
+          video_id: data.video_id,
+          duration_seconds: data.duration_seconds || 60,
+          frames: data.frame_paths || [],
+          transcript: data.transcript || '',
+          description: data.description || '',
+          manin_prompt: data.manin_prompt || '',
+        };
+      }
+
+      // Track the current firebase video id for syncing
+      window._currentFirebaseVideoId = data.video_id;
+
+      // Source attribution banner (if video came from a channel)
+      const attr = document.getElementById('sourceAttribution');
+      if (data.channel_id) {
+        attr.style.display = 'block';
+        const chLink = document.getElementById('sourceChannelLink');
+        chLink.href = `#channel/${data.channel_id}`;
+        chLink.textContent = 'this channel';
+        // Try to fetch channel name asynchronously
+        fetch(API_BASE + '/api/channels').then(r => r.json()).then(d => {
+          const ch = (d.channels || []).find(c => c.channel_id === data.channel_id);
+          if (ch) chLink.textContent = ch.name || ch.handle || 'channel';
+        }).catch(() => {});
+        const shortLink = document.getElementById('sourceShortLink');
+        shortLink.href = data.source_url || '#';
+      } else {
+        attr.style.display = 'none';
+      }
+
+      // Show regenerate button for generated/failed videos
+      const regenBtn = document.getElementById('regenerateBtn');
+      if (['generated','failed','published'].includes(status)) {
+        regenBtn.style.display = 'block';
+      } else {
+        regenBtn.style.display = 'none';
+      }
+
+      // For failed status, still show edit section if we have analysis data
+      if (status === 'failed' && (data.transcript || data.description)) {
+        // Treat as analyzed — let user edit and regenerate
+      }
+
+      // Hydrate Step 1 results if analyzed+
+      if (['analyzed','generating','generated','publishing','published','failed'].includes(status) && (data.transcript || data.description)) {
+        document.getElementById('metaDuration').textContent = data.duration_seconds || '-';
+        document.getElementById('metaFrames').textContent = (data.frame_paths || []).length;
+        document.getElementById('metaId').textContent = data.video_id;
+        document.getElementById('resTranscript').textContent = data.transcript || '';
+        document.getElementById('resDescription').textContent = data.description || '';
+        document.getElementById('resPrompt').textContent = data.manin_prompt || '';
+
+        // Show frames
+        const framesGrid = document.getElementById('resFrames');
+        framesGrid.innerHTML = '';
+        galleryImages = [];
+        (data.frame_paths || []).forEach((f, idx) => {
+          const src = API_BASE + `/storage/${f}`;
+          galleryImages.push(src);
+          const img = document.createElement('img');
+          img.src = src;
+          img.alt = f.split('/').pop();
+          img.loading = 'lazy';
+          img.onclick = () => openGallery(idx);
+          framesGrid.appendChild(img);
+        });
+        document.getElementById('sourceFramesSection').style.display = (data.frame_paths || []).length > 0 ? 'block' : 'none';
+        document.getElementById('framesBadge').textContent = (data.frame_paths || []).length;
+
+        // YouTube embed
+        const ytId = extractYouTubeId(data.source_url || '');
+        if (ytId) {
+          document.getElementById('youtubeEmbed').src = `https://www.youtube.com/embed/${ytId}?rel=0`;
+        }
+
+        document.getElementById('details').classList.add('active');
+
+        // Pre-fill Step 2
+        document.getElementById('editTranscript').value = data.transcript || '';
+        document.getElementById('editDescription').value = data.description || '';
+        document.getElementById('editManimPrompt').value = data.manin_prompt || '';
+        const savedTitle = data.title || (data.description || '').split('\n')[0]?.substring(0, 60)?.trim() || 'Inspired Video';
+        document.getElementById('genTitle').value = savedTitle;
+        if (data.orientation) document.getElementById('genOrientation').value = data.orientation;
+        if (data.quality) document.getElementById('genQuality').value = data.quality;
+        if (data.voiceover !== undefined) document.getElementById('genVoiceover').value = data.voiceover ? 'true' : 'false';
+        document.getElementById('editSection').style.display = 'block';
+      }
+
+      // Hydrate generating/generated state
+      if (['generating','generated','publishing','published'].includes(status) && data.job_id) {
+        currentJobId = data.job_id;
+        const videoComp = document.getElementById('videoComparison');
+        videoComp.classList.add('active');
+
+        if (status === 'generating') {
+          document.getElementById('renderStatus').classList.add('active');
+          document.getElementById('renderStatusText').textContent = 'Rendering...';
+          document.getElementById('renderProgress').style.display = 'block';
+          document.getElementById('generatedVideoWrap').style.display = 'none';
+          document.getElementById('genTag').textContent = 'Rendering';
+          pollJobStatus(data.job_id, data.orientation || 'portrait');
+        }
+
+        if (['generated','publishing','published'].includes(status)) {
+          document.getElementById('renderStatus').classList.remove('active');
+          document.getElementById('genTag').textContent = 'Complete';
+          const orientation = data.orientation || 'portrait';
+          const videoUrl = API_BASE + `/generate/${data.job_id}/video?orientation=${orientation}`;
+          document.getElementById('renderedVideo').src = videoUrl;
+          document.getElementById('downloadLink').href = videoUrl;
+          document.getElementById('downloadLink').download = `octoflash_${data.job_id}_${orientation}.mp4`;
+          document.getElementById('generatedVideoWrap').style.display = 'block';
+          fetchScript(data.job_id);
+          fetchOutputFrames(data.job_id);
+          showPublishSection();
+        }
+      }
+
+      // Show first URL input with the source URL
+      if (data.source_url) {
+        const firstInput = document.querySelector('.url-input');
+        if (firstInput && !firstInput.value) {
+          firstInput.value = data.source_url;
+        }
+      }
+
+      // For queued/analyzing status — show the analyze form ready to go
+      if (['queued','analyzing'].includes(status)) {
+        if (status === 'analyzing') {
+          spinner.classList.add('active');
+          spinner.querySelector('p').textContent = 'Auto-processing... analyzing video';
+        }
+      }
+    }
+
+    // ── Helpers ──
+    function formatTimeAgo(ts) {
+      if (!ts) return '';
+      const date = typeof ts === 'string' ? new Date(ts) : (ts.toDate ? ts.toDate() : new Date(ts.seconds * 1000));
+      const diff = (Date.now() - date.getTime()) / 1000;
+      if (diff < 60) return 'just now';
+      if (diff < 3600) return Math.floor(diff / 60) + ' min ago';
+      if (diff < 86400) return Math.floor(diff / 3600) + ' hr ago';
+      return Math.floor(diff / 86400) + ' day(s) ago';
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
 
     function extractYouTubeId(url) {
       const patterns = [
@@ -1104,6 +2260,26 @@
         if (!res.ok) throw new Error(data.detail || 'Analysis failed');
 
         analysisData = data;
+        window._currentFirebaseVideoId = data.video_id;
+
+        // Sync analysis results to Firebase (create or update)
+        const fbVideoId = window._currentFirebaseVideoId;
+        if (fbVideoId) {
+          fetch(API_BASE + `/api/videos/${fbVideoId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              transcript: data.transcript,
+              description: data.description,
+              manin_prompt: data.manin_prompt,
+            }),
+          }).catch(err => console.warn('Firebase analysis sync failed:', err));
+        }
+
+        // Derive a title from the first line of transcript or description
+        const autoTitle = (data.synthesized_title ||
+          (data.description || '').split('\n')[0]?.substring(0, 60) ||
+          'Inspired Video').trim();
 
         document.getElementById('metaDuration').textContent = data.duration_seconds;
         document.getElementById('metaFrames').textContent = data.frames.length;
@@ -1141,7 +2317,7 @@
         document.getElementById('editTranscript').value = data.transcript;
         document.getElementById('editDescription').value = data.description;
         document.getElementById('editManimPrompt').value = data.manin_prompt;
-        document.getElementById('genTitle').value = 'Inspired Video';
+        document.getElementById('genTitle').value = autoTitle;
         document.getElementById('editSection').style.display = 'block';
         document.getElementById('editSection').scrollIntoView({ behavior: 'smooth', block: 'center' });
 
@@ -1159,7 +2335,9 @@
       if (!analysisData) return;
 
       const generateBtn = document.getElementById('generateBtn');
+      const regenerateBtn = document.getElementById('regenerateBtn');
       generateBtn.disabled = true;
+      regenerateBtn.disabled = true;
       generateBtn.textContent = 'Generating...';
       errorEl.style.display = 'none';
 
@@ -1171,6 +2349,16 @@
         const orientation = document.getElementById('genOrientation').value;
         const quality = document.getElementById('genQuality').value;
         const voiceover = document.getElementById('genVoiceover').value === 'true';
+
+        // Sync edits to Firebase if we have a video ID
+        const fbVideoId = window._currentFirebaseVideoId;
+        if (fbVideoId) {
+          await fetch(API_BASE + `/api/videos/${fbVideoId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ transcript, description, manin_prompt: manimPrompt, title, orientation, quality, voiceover }),
+          }).catch(err => console.warn('Firebase sync failed:', err));
+        }
 
         const renderStatus = document.getElementById('renderStatus');
         const statusText = document.getElementById('renderStatusText');
@@ -1185,27 +2373,40 @@
         generatedVideoWrap.style.display = 'none';
         genTag.textContent = 'Rendering';
         genTag.className = 'tag tag-generated';
+        regenerateBtn.style.display = 'none';
 
         const videoComp = document.getElementById('videoComparison');
         videoComp.classList.add('active');
         videoComp.classList.toggle('portrait', orientation === 'portrait');
         videoComp.scrollIntoView({ behavior: 'smooth' });
 
-        const genRes = await fetch(API_BASE + '/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            video_id: analysisData.video_id,
-            transcript, description, duration: analysisData.duration_seconds,
-            title, orientation, quality, voiceover,
-            manin_prompt: manimPrompt,
-          }),
-        });
-
-        const genData = await genRes.json();
-        if (!genRes.ok) throw new Error(genData.detail || 'Generate request failed');
+        // Use Firebase-aware endpoint if we have a video ID, otherwise legacy
+        let genData;
+        if (fbVideoId) {
+          const genRes = await fetch(API_BASE + `/api/videos/${fbVideoId}/generate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+          });
+          genData = await genRes.json();
+          if (!genRes.ok) throw new Error(genData.detail || 'Generate request failed');
+          // job_id comes from the response
+        } else {
+          const genRes = await fetch(API_BASE + '/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              video_id: analysisData.video_id,
+              transcript, description, duration: analysisData.duration_seconds,
+              title, orientation, quality, voiceover,
+              manin_prompt: manimPrompt,
+            }),
+          });
+          genData = await genRes.json();
+          if (!genRes.ok) throw new Error(genData.detail || 'Generate request failed');
+        }
 
         statusText.textContent = 'Rendering... this may take a few minutes';
+        currentJobId = genData.job_id;
         pollJobStatus(genData.job_id, orientation);
 
       } catch (err) {
@@ -1213,6 +2414,7 @@
         errorEl.style.display = 'block';
       } finally {
         generateBtn.disabled = false;
+        regenerateBtn.disabled = false;
         generateBtn.textContent = 'Generate Video';
       }
     }
@@ -1252,6 +2454,7 @@
             fetchScript(jobId);
             fetchOutputFrames(jobId);
             fetchYouTubeMetadata();
+            showPublishSection();
 
           } else if (job.status === 'failed') {
             statusText.className = 'status-text failed';
@@ -1360,11 +2563,24 @@
         document.getElementById('ytDescription').textContent = meta.description;
         document.getElementById('ytTags').textContent = meta.tags;
 
+        // Sync YT metadata to Firebase
+        const fbVideoId = window._currentFirebaseVideoId;
+        if (fbVideoId) {
+          fetch(API_BASE + `/api/videos/${fbVideoId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: meta.title }),
+          }).catch(err => console.warn('Firebase title sync failed:', err));
+        }
+
         loading.style.display = 'none';
         content.style.display = 'block';
+        showPublishSection();
       } catch (err) {
         loading.textContent = 'Failed to generate metadata: ' + err.message;
         console.warn('YouTube metadata error:', err);
+        // Still show publish section even if metadata fails
+        showPublishSection();
       }
     }
 
@@ -1437,6 +2653,213 @@
 
     document.getElementById('galleryModal').addEventListener('click', (e) => {
       if (e.target === e.currentTarget) closeGallery();
+    });
+
+    // ── Publish Functions ──────────────────────────────────────
+
+    function showPublishSection() {
+      document.getElementById('publishSection').style.display = 'block';
+      // Show only the Preview button initially
+      document.getElementById('pubPreviewPhase').style.display = 'block';
+      document.getElementById('pubEditPhase').style.display = 'none';
+    }
+
+    function openPublishPreview() {
+      document.getElementById('pubPreviewPhase').style.display = 'none';
+      document.getElementById('pubEditPhase').style.display = 'block';
+
+      // Set video preview
+      const renderedVideo = document.getElementById('renderedVideo');
+      if (renderedVideo && renderedVideo.src) {
+        const preview = document.getElementById('pubPreview');
+        preview.src = renderedVideo.src;
+        preview.load();
+      }
+
+      // Pre-fill from YouTube metadata if available
+      const ytTitle = document.getElementById('ytTitle');
+      const ytDesc = document.getElementById('ytDescription');
+      const ytTags = document.getElementById('ytTags');
+
+      document.getElementById('pubTitle').value = ytTitle?.textContent || document.getElementById('genTitle')?.value || '';
+      document.getElementById('pubDescription').value = ytDesc?.textContent || '';
+      document.getElementById('pubTags').value = ytTags?.textContent || '';
+
+      // Reset result
+      const result = document.getElementById('pubResult');
+      result.className = 'publish-result';
+      result.textContent = '';
+      document.getElementById('pubSubmitBtn').disabled = true;
+      document.getElementById('pubSubmitBtn').textContent = 'Publish to YouTube';
+
+      checkYouTubeStatus();
+    }
+
+    async function checkYouTubeStatus() {
+      const statusEl = document.getElementById('ytConnectStatus');
+      const actionsEl = document.getElementById('ytConnectActions');
+      const submitBtn = document.getElementById('pubSubmitBtn');
+
+      try {
+        const res = await fetch(API_BASE + '/oauth/youtube/status');
+        const data = await res.json();
+        ytConnected = data.connected;
+
+        if (ytConnected) {
+          statusEl.textContent = 'Connected';
+          statusEl.className = 'platform-status connected';
+          actionsEl.innerHTML = '<button class="connect-btn connected-btn">Connected</button><button class="disconnect-btn" onclick="disconnectYouTube()">Disconnect</button>';
+          submitBtn.disabled = false;
+          fetchPlaylists();
+        } else {
+          statusEl.textContent = 'Not connected';
+          statusEl.className = 'platform-status';
+          actionsEl.innerHTML = '<button class="connect-btn" onclick="connectYouTube()">Connect</button>';
+          submitBtn.disabled = true;
+        }
+      } catch (err) {
+        statusEl.textContent = 'Could not check status';
+        statusEl.className = 'platform-status';
+      }
+    }
+
+    async function fetchPlaylists() {
+      const select = document.getElementById('pubPlaylist');
+      // Keep first two options (None + Create new)
+      while (select.options.length > 2) select.remove(2);
+
+      if (!ytConnected) return;
+      try {
+        const res = await fetch(API_BASE + '/oauth/youtube/playlists');
+        const data = await res.json();
+        (data.playlists || []).forEach(pl => {
+          const opt = document.createElement('option');
+          opt.value = pl.title;
+          opt.textContent = pl.title;
+          select.insertBefore(opt, select.options[1]); // before "Create new"
+        });
+      } catch (err) {
+        console.warn('Could not fetch playlists:', err);
+      }
+    }
+
+    function connectYouTube() {
+      fetch(API_BASE + '/oauth/youtube/start')
+        .then(r => r.json())
+        .then(data => {
+          const popup = window.open(data.auth_url, 'youtube-oauth', 'width=600,height=700');
+          // Listen for postMessage from callback page
+          window.addEventListener('message', function handler(e) {
+            if (e.data && e.data.type === 'youtube-connected') {
+              window.removeEventListener('message', handler);
+              checkYouTubeStatus();
+            }
+          });
+        })
+        .catch(err => {
+          alert('Failed to start YouTube connection: ' + err.message);
+        });
+    }
+
+    async function disconnectYouTube() {
+      try {
+        await fetch(API_BASE + '/oauth/youtube/disconnect', { method: 'POST' });
+        ytConnected = false;
+        checkYouTubeStatus();
+      } catch (err) {
+        console.warn('Disconnect error:', err);
+      }
+    }
+
+    async function submitPublish() {
+      if (!currentJobId) {
+        alert('No rendered video to publish');
+        return;
+      }
+
+      const submitBtn = document.getElementById('pubSubmitBtn');
+      const result = document.getElementById('pubResult');
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Publishing...';
+      result.className = 'publish-result uploading';
+      result.textContent = 'Uploading to YouTube...';
+
+      try {
+        const res = await fetch(API_BASE + '/publish', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            job_id: currentJobId,
+            title: document.getElementById('pubTitle').value,
+            description: document.getElementById('pubDescription').value,
+            tags: document.getElementById('pubTags').value,
+            platforms: ['youtube'],
+            privacy: document.getElementById('pubPrivacy').value,
+            video_type: document.getElementById('pubVideoType').value,
+            playlist: document.getElementById('pubPlaylist').value === '__new__'
+              ? document.getElementById('pubNewPlaylist').value
+              : document.getElementById('pubPlaylist').value,
+          }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || 'Publish failed');
+        }
+
+        pollPublishStatus(currentJobId);
+      } catch (err) {
+        result.className = 'publish-result error';
+        result.textContent = 'Error: ' + err.message;
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Publish to YouTube';
+      }
+    }
+
+    function pollPublishStatus(jobId) {
+      const result = document.getElementById('pubResult');
+      const submitBtn = document.getElementById('pubSubmitBtn');
+
+      const poll = async () => {
+        try {
+          const res = await fetch(API_BASE + `/publish/${jobId}/status`);
+          const data = await res.json();
+          const ytStatus = data.publish?.youtube;
+
+          if (!ytStatus) {
+            setTimeout(poll, 2000);
+            return;
+          }
+
+          if (ytStatus.status === 'uploading' || ytStatus.status === 'pending') {
+            result.className = 'publish-result uploading';
+            result.textContent = 'Uploading to YouTube...';
+            setTimeout(poll, 3000);
+          } else if (ytStatus.status === 'completed') {
+            result.className = 'publish-result success';
+            result.innerHTML = 'Published! <a href="' + ytStatus.url + '" target="_blank">View on YouTube</a>';
+            submitBtn.textContent = 'Published!';
+          } else if (ytStatus.status === 'failed') {
+            result.className = 'publish-result error';
+            result.textContent = 'Failed: ' + (ytStatus.error || 'Unknown error');
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Retry';
+          }
+        } catch (err) {
+          result.className = 'publish-result error';
+          result.textContent = 'Connection error: ' + err.message;
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Retry';
+        }
+      };
+
+      poll();
+    }
+
+    // Quick-add enter key
+    document.getElementById('quickAddUrl')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') quickAddVideo();
     });
   </script>
 </body>

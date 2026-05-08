@@ -9,8 +9,10 @@ from dotenv import load_dotenv
 
 from manim import (
     Scene, VGroup, Text, RoundedRectangle, Code,
+    Circle, AnnularSector, Sector, Annulus,
     FadeIn, FadeOut, Write,
     UP, DOWN, LEFT, RIGHT, ORIGIN,
+    PI, TAU,
     config, ThreeDScene,
 )
 from manim_voiceover import VoiceoverScene
@@ -75,25 +77,89 @@ def get_speech_service():
     return service
 
 
+# ── ContextZero Logo (D-shape inside a ring) ────────────────────────────────
+def make_contextzero_logo(radius: float = 0.22) -> VGroup:
+    """Build the ContextZero logo: thick white ring with a white D-shape inside.
+
+    The D is formed by a half-disc filling the right hemisphere of an inner
+    circle, leaving the left as negative space (matching the brand mark).
+    """
+    ring_thickness = radius * 0.18
+    inner_gap = radius * 0.20
+
+    ring = Annulus(
+        inner_radius=radius - ring_thickness,
+        outer_radius=radius,
+        color=TEXT_PRIMARY,
+        fill_opacity=1.0,
+        stroke_width=0,
+    )
+
+    # Half-disc (right hemisphere) forms the D shape
+    d_radius = radius - ring_thickness - inner_gap
+    d_shape = Sector(
+        outer_radius=d_radius,
+        angle=PI,
+        start_angle=-PI / 2,
+        color=TEXT_PRIMARY,
+        fill_opacity=1.0,
+        stroke_width=0,
+    )
+    return VGroup(ring, d_shape)
+
+
+def make_brand_watermark() -> VGroup:
+    """Top-of-frame brand watermark: ContextZero logo + 'ContextZeroAI' text."""
+    logo = make_contextzero_logo(radius=0.22)
+    text = Text("ContextZeroAI", font_size=22, color=TEXT_PRIMARY, weight="BOLD")
+    text.next_to(logo, RIGHT, buff=0.18)
+    group = VGroup(logo, text)
+    # Position near top-center with margin from the top edge
+    group.to_edge(UP, buff=0.25)
+    return group
+
+
+# ── Base Scene (2D, no voiceover) ────────────────────────────────────────────
+class OctoflashSceneNoVoice(Scene):
+    """Plain 2D scene with dark background + brand watermark (no voiceover)."""
+
+    def setup(self):
+        super().setup()
+        self.camera.background_color = BG_COLOR
+        self._brand_watermark = make_brand_watermark()
+        self._brand_watermark.set_z_index(1000)
+        self.add(self._brand_watermark)
+
+
 # ── Base Scene (2D) ──────────────────────────────────────────────────────────
 class OctoflashScene(VoiceoverScene):
-    """Base 2D scene with dark background + ElevenLabs voiceover."""
+    """Base 2D scene with dark background + ElevenLabs voiceover + brand watermark."""
 
     def setup(self):
         super().setup()
         self.camera.background_color = BG_COLOR
         self.set_speech_service(get_speech_service())
+        # Persistent brand watermark — added before any animation so it's always on top
+        self._brand_watermark = make_brand_watermark()
+        self._brand_watermark.set_z_index(1000)
+        self.add(self._brand_watermark)
 
 
 # ── Base Scene (3D) ──────────────────────────────────────────────────────────
 class Octoflash3DScene(ThreeDScene, VoiceoverScene):
-    """Base 3D scene with dark background + ElevenLabs voiceover."""
+    """Base 3D scene with dark background + ElevenLabs voiceover + brand watermark."""
 
     def setup(self):
         ThreeDScene.setup(self)
         VoiceoverScene.setup(self)
         self.camera.background_color = BG_COLOR
         self.set_speech_service(get_speech_service())
+        self._brand_watermark = make_brand_watermark()
+        self._brand_watermark.set_z_index(1000)
+        try:
+            self.add_fixed_in_frame_mobjects(self._brand_watermark)
+        except Exception:
+            self.add(self._brand_watermark)
 
 
 # ── Helper: Title Card ───────────────────────────────────────────────────────

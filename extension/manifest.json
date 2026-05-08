@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Octoflash - Queue YouTube Videos",
+  "version": "1.0.0",
+  "description": "Right-click any YouTube video to queue it in Octoflash for AI animation generation.",
+  "permissions": ["contextMenus", "storage"],
+  "host_permissions": ["*://www.youtube.com/*", "*://youtu.be/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Octoflash"
+  },
+  "icons": {
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
+}

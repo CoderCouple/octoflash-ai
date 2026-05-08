@@ -1202,6 +1202,23 @@ def sanitize_script(code: str) -> str:
             code,
         )
 
+    # ── CRITICAL: Inject missing `self` into scene-helper calls ──
+    # Claude often calls emphasis_box(mobject, ...) instead of emphasis_box(self, mobject, ...).
+    # All _self_playing_helpers require `scene` (i.e. `self`) as the first argument.
+    _prev = code
+    for helper in _self_playing_helpers:
+        # Match helper(something_not_self, ...) inside a method body (indented)
+        # emphasis_box(bars[0], color=X) → emphasis_box(self, bars[0], color=X)
+        code = re.sub(
+            rf'(\s){helper}\((?!self[\s,)])',
+            rf'\1{helper}(self, ',
+            code,
+        )
+    # Clean up double-self: helper(self, self, ...) → helper(self, ...)
+    for helper in _self_playing_helpers:
+        code = re.sub(rf'{helper}\(self,\s*self,', rf'{helper}(self,', code)
+    code = _track("inject missing self into scene-helper calls", _prev, code)
+
     # ── CRITICAL: Strip .group from diagram helper return accesses ──
     # make_flowchart/make_timeline/make_pipeline/make_comparison_layout etc.
     # return VGroups directly — they don't have a .group attribute.
@@ -1386,15 +1403,15 @@ def strip_voiceover(code: str) -> str:
     Replaces OctoflashScene with Scene, removes voiceover context managers,
     adds self.wait() calls, and removes OctoflashScene imports.
     """
-    # Replace class inheritance
+    # Replace class inheritance — use OctoflashSceneNoVoice so the brand watermark is preserved
     code = re.sub(
         r'class\s+(\w+)\s*\(\s*OctoflashScene\s*\)',
-        r'class \1(Scene)',
+        r'class \1(OctoflashSceneNoVoice)',
         code,
     )
 
-    # Remove OctoflashScene from imports
-    code = re.sub(r',?\s*OctoflashScene\s*,?', ',', code)
+    # Replace OctoflashScene with OctoflashSceneNoVoice in imports
+    code = re.sub(r'\bOctoflashScene\b(?!NoVoice)', 'OctoflashSceneNoVoice', code)
     # Clean up double commas or trailing commas before )
     code = re.sub(r',\s*,', ',', code)
     code = re.sub(r',\s*\)', ')', code)

@@ -37,6 +37,17 @@ class GenerateResponse(BaseModel):
     status: str
 
 
+class PublishRequest(BaseModel):
+    job_id: str
+    title: str
+    description: str
+    tags: str
+    platforms: list[str]  # ["youtube"]
+    privacy: str = "public"
+    video_type: str = "shorts"  # "shorts" or "regular"
+    playlist: str = ""  # playlist name — created if doesn't exist
+
+
 class JobStatusResponse(BaseModel):
     job_id: str
     status: str
@@ -47,3 +58,32 @@ class JobStatusResponse(BaseModel):
     script_file: str | None = None
     created_at: str | None = None
     completed_at: str | None = None
+    publish: dict | None = None
+
+
+class QueueVideoRequest(BaseModel):
+    url: str
+    source: str = "web"  # "web" | "extension" | "channel"
+    channel_id: str | None = None
+    source_short_youtube_id: str | None = None
+
+
+class VideoUpdateRequest(BaseModel):
+    title: str | None = None
+    transcript: str | None = None
+    description: str | None = None
+    manin_prompt: str | None = None
+    orientation: str | None = None
+    quality: str | None = None
+    voiceover: bool | None = None
+
+
+class ChannelRequest(BaseModel):
+    url: str
+    name: str = ""
+    notes: str = ""
+
+
+class ChannelUpdateRequest(BaseModel):
+    name: str | None = None
+    notes: str | None = None

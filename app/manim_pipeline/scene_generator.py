@@ -57,7 +57,7 @@ def generate_scene_code(
         lines.append("from app.manim_pipeline.styles import (")
         lines.append("    OctoflashScene, make_title_card, intro_sequence, outro_sequence,")
     else:
-        lines.append("from manim import Scene")
+        lines.append("from app.manim_pipeline.styles import OctoflashSceneNoVoice")
         lines.append("from app.manim_pipeline.styles import (")
         lines.append("    make_title_card, intro_sequence, outro_sequence,")
 
@@ -70,7 +70,7 @@ def generate_scene_code(
     lines.append("")
 
     # Class
-    base = "OctoflashScene" if voiceover else "Scene"
+    base = "OctoflashScene" if voiceover else "OctoflashSceneNoVoice"
     lines.append(f"class InspiredVideoScene({base}):")
     lines.append("")
     lines.append("    def construct(self):")

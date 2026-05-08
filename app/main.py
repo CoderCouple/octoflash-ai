@@ -1,5 +1,8 @@
+import asyncio
 import logging
+import os
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
@@ -11,6 +14,8 @@ from pydantic import BaseModel
 from app.models.schemas import (
     AnalyzeRequest, AnalyzeResponse, AnalyzeMultiRequest,
     GenerateRequest, GenerateResponse, JobStatusResponse,
+    PublishRequest, QueueVideoRequest, VideoUpdateRequest,
+    ChannelRequest, ChannelUpdateRequest,
 )
 from app.services.downloader import download_video, validate_youtube_url
 from app.services.frame_extractor import extract_frames, get_video_duration
@@ -18,14 +23,41 @@ from app.services.transcriber import extract_youtube_id, fetch_transcript, proce
 from app.services.describer import generate_description
 from app.services.prompt_builder import build_manin_prompt
 from app.services.script_generator import synthesize_concepts
-from app.services.job_manager import create_job, get_job
+from app.services.job_manager import create_job, get_job, update_job
 from app.manim_pipeline.renderer import render_job
 from app.services.youtube_metadata import generate_youtube_metadata
+from app.services.youtube_uploader import (
+    get_youtube_auth_url, handle_youtube_callback, is_youtube_connected,
+    upload_to_youtube, disconnect_youtube, list_playlists,
+)
+from app.services.video_manager import (
+    create_video, get_video, update_video, list_videos,
+)
+from app.services.channel_manager import (
+    create_channel, list_channels, delete_channel, update_channel,
+)
 from app.utils.files import cleanup_video
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Octoflash", version="0.3.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Start auto-processor on startup, stop on shutdown."""
+    from app.services.auto_processor import auto_process_loop, stop as stop_processor
+    task = asyncio.create_task(auto_process_loop())
+    logger.info("Lifespan: auto-processor task created")
+    yield
+    stop_processor()
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+    logger.info("Lifespan: auto-processor stopped")
+
+
+app = FastAPI(title="Octoflash", version="0.4.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -42,6 +74,7 @@ STORAGE_DIR = Path(__file__).parent.parent / "storage"
 
 # Serve storage files (frames, renders) at /storage/...
 app.mount("/storage", StaticFiles(directory=str(STORAGE_DIR)), name="storage")
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 @app.get("/")
@@ -49,9 +82,233 @@ def root():
     return FileResponse(STATIC_DIR / "index.html")
 
 
+@app.get("/favicon.ico")
+def favicon():
+    return FileResponse(STATIC_DIR / "favicon.ico")
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/api/config")
+def api_config():
+    """Return Firebase config for the frontend client SDK."""
+    return {
+        "firebase_project_id": os.environ.get("FIREBASE_PROJECT_ID", ""),
+        "firebase_api_key": os.environ.get("FIREBASE_WEB_API_KEY", ""),
+    }
+
+
+# ── Video CRUD (Firebase) ────────────────────────────────────────────────
+
+
+@app.get("/api/videos")
+def api_list_videos():
+    """List all videos from Firebase."""
+    return {"videos": list_videos(limit=50)}
+
+
+@app.post("/api/videos")
+def api_queue_video(req: QueueVideoRequest):
+    """Queue a new video URL for processing. Optionally tag with channel_id for tracking."""
+    if not validate_youtube_url(req.url):
+        raise HTTPException(status_code=400, detail="Invalid YouTube URL")
+    video = create_video(
+        req.url,
+        source=req.source,
+        channel_id=req.channel_id,
+        source_short_youtube_id=req.source_short_youtube_id,
+    )
+    if video is None:
+        raise HTTPException(status_code=503, detail="Firebase not available")
+    return video
+
+
+@app.get("/api/videos/{video_id}")
+def api_get_video(video_id: str):
+    """Get a single video by ID."""
+    video = get_video(video_id)
+    if video is None:
+        raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
+    return video
+
+
+@app.patch("/api/videos/{video_id}")
+def api_update_video(video_id: str, req: VideoUpdateRequest):
+    """Update editable fields on a video."""
+    fields = {k: v for k, v in req.model_dump().items() if v is not None}
+    if not fields:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    video = update_video(video_id, **fields)
+    if video is None:
+        raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
+    return video
+
+
+@app.post("/api/videos/{video_id}/analyze")
+def api_trigger_analyze(video_id: str, background_tasks: BackgroundTasks):
+    """Manually trigger analysis for a video."""
+    video = get_video(video_id)
+    if video is None:
+        raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
+    update_video(video_id, status="queued", error=None)
+    return {"status": "queued", "video_id": video_id}
+
+
+@app.get("/api/channels")
+def api_list_channels():
+    """List all followed channels."""
+    return {"channels": list_channels(limit=100)}
+
+
+@app.post("/api/channels")
+def api_create_channel(req: ChannelRequest):
+    """Add a new channel to follow."""
+    if "youtube.com" not in req.url and "youtu.be" not in req.url:
+        raise HTTPException(status_code=400, detail="URL must be a YouTube channel URL")
+    ch = create_channel(req.url, name=req.name, notes=req.notes)
+    if ch is None:
+        raise HTTPException(status_code=503, detail="Firebase not available")
+    return ch
+
+
+@app.delete("/api/channels/{channel_id}")
+def api_delete_channel(channel_id: str):
+    """Unfollow a channel."""
+    ok = delete_channel(channel_id)
+    if not ok:
+        raise HTTPException(status_code=503, detail="Firebase not available")
+    return {"deleted": channel_id}
+
+
+@app.patch("/api/channels/{channel_id}")
+def api_update_channel(channel_id: str, req: ChannelUpdateRequest):
+    fields = {k: v for k, v in req.model_dump().items() if v is not None}
+    ch = update_channel(channel_id, **fields)
+    if ch is None:
+        raise HTTPException(status_code=404, detail=f"Channel {channel_id} not found")
+    return ch
+
+
+@app.get("/api/channels/{channel_id}/used-shorts")
+def api_used_shorts(channel_id: str):
+    """Map of source_short_youtube_id → video metadata for shorts queued from this channel."""
+    from app.services.firebase_client import videos_collection
+    from google.cloud.firestore_v1.base_query import FieldFilter
+    col = videos_collection()
+    if col is None:
+        raise HTTPException(status_code=503, detail="Firebase not available")
+    used = {}
+    for doc in col.where(filter=FieldFilter("channel_id", "==", channel_id)).stream():
+        d = doc.to_dict()
+        yt_id = d.get("source_short_youtube_id")
+        if not yt_id:
+            continue
+        publish = (d.get("publish") or {}).get("youtube") or {}
+        used[yt_id] = {
+            "video_id": d.get("video_id"),
+            "status": d.get("status"),
+            "title": d.get("title"),
+            "published_url": publish.get("url"),
+            "created_at": d.get("created_at").isoformat() if hasattr(d.get("created_at"), "isoformat") else None,
+        }
+    return {"channel_id": channel_id, "used_shorts": used}
+
+
+@app.get("/api/channels/{channel_id}/shorts")
+def api_channel_shorts(channel_id: str, limit: int = Query(5)):
+    """Fetch recent shorts from a followed channel via yt-dlp."""
+    from app.services.channel_manager import _channels_collection
+    col = _channels_collection()
+    if col is None:
+        raise HTTPException(status_code=503, detail="Firebase not available")
+    doc = col.document(channel_id).get()
+    if not doc.exists:
+        raise HTTPException(status_code=404, detail=f"Channel {channel_id} not found")
+
+    channel = doc.to_dict()
+    url = channel.get("url", "")
+
+    # Try shorts URL variant first, fall back to channel URL
+    shorts_urls = []
+    if "/shorts" not in url:
+        if url.endswith("/"):
+            shorts_urls.append(url + "shorts")
+        else:
+            shorts_urls.append(url + "/shorts")
+    shorts_urls.append(url)
+
+    import json as _json
+    import subprocess as _sp
+    last_err = None
+    for try_url in shorts_urls:
+        try:
+            result = _sp.run(
+                [
+                    "yt-dlp", "--flat-playlist", "--dump-json",
+                    "--playlist-end", str(limit),
+                    "--skip-download",
+                    try_url,
+                ],
+                capture_output=True, text=True, timeout=30,
+            )
+            if result.returncode != 0:
+                last_err = result.stderr[-300:]
+                continue
+            shorts = []
+            for line in result.stdout.strip().splitlines():
+                try:
+                    item = _json.loads(line)
+                    yt_id = item.get("id", "")
+                    shorts.append({
+                        "id": yt_id,
+                        "title": item.get("title", ""),
+                        "url": item.get("url") or f"https://www.youtube.com/shorts/{yt_id}",
+                        "thumbnail": f"https://img.youtube.com/vi/{yt_id}/mqdefault.jpg" if yt_id else "",
+                        "duration": item.get("duration"),
+                    })
+                except Exception:
+                    continue
+            return {"channel_id": channel_id, "shorts": shorts}
+        except Exception as e:
+            last_err = str(e)
+            continue
+
+    raise HTTPException(status_code=502, detail=f"Failed to fetch shorts: {last_err}")
+
+
+@app.post("/api/videos/{video_id}/generate")
+def api_trigger_generate(video_id: str, background_tasks: BackgroundTasks):
+    """Manually trigger generation for an analyzed video."""
+    video = get_video(video_id)
+    if video is None:
+        raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
+    if video.get("status") not in ("analyzed", "generated", "failed"):
+        raise HTTPException(status_code=400, detail=f"Video must be analyzed first (current: {video.get('status')})")
+
+    job_id = uuid.uuid4().hex[:12]
+    update_video(video_id, status="generating", job_id=job_id, error=None)
+
+    from app.services.auto_processor import _run_generation
+    background_tasks.add_task(
+        _run_generation,
+        job_id=job_id,
+        video_id=video_id,
+        analysis={
+            "transcript": video.get("transcript", ""),
+            "description": video.get("description", ""),
+            "duration_seconds": video.get("duration_seconds", 60.0),
+            "manin_prompt": video.get("manin_prompt", ""),
+            "frames": video.get("frame_paths", []),
+        },
+        orientation=video.get("orientation", "portrait"),
+        quality=video.get("quality", "qm"),
+        voiceover=video.get("voiceover", True),
+        title=video.get("title", ""),
+    )
+    return {"status": "generating", "video_id": video_id, "job_id": job_id}
 
 
 def _get_oembed_duration(yt_id: str) -> float | None:
@@ -379,6 +636,162 @@ def youtube_metadata_endpoint(req: YouTubeMetadataRequest):
         return meta
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Metadata generation failed: {e}")
+
+
+# ── YouTube OAuth & Publish ─────────────────────────────────────────────
+
+
+@app.get("/oauth/youtube/start")
+def youtube_oauth_start():
+    """Return Google OAuth2 consent URL for YouTube."""
+    try:
+        auth_url = get_youtube_auth_url()
+        return {"auth_url": auth_url}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/oauth/youtube/callback")
+def youtube_oauth_callback(code: str = Query(...)):
+    """Handle OAuth callback — exchange code for tokens, close popup."""
+    from fastapi.responses import HTMLResponse
+    try:
+        handle_youtube_callback(code)
+        return HTMLResponse("""
+        <html><body style="font-family:Inter,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;background:#f8f9fb;">
+        <div style="text-align:center;">
+            <h2 style="color:#16a34a;">Connected!</h2>
+            <p style="color:#6b7280;">YouTube account linked. You can close this window.</p>
+        </div>
+        <script>
+            if (window.opener) {
+                window.opener.postMessage({type: 'youtube-connected'}, '*');
+            }
+            setTimeout(() => window.close(), 1500);
+        </script>
+        </body></html>
+        """)
+    except Exception as e:
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse(f"""
+        <html><body style="font-family:Inter,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;background:#f8f9fb;">
+        <div style="text-align:center;">
+            <h2 style="color:#dc2626;">Connection Failed</h2>
+            <p style="color:#6b7280;">{e}</p>
+        </div>
+        </body></html>
+        """, status_code=400)
+
+
+@app.get("/oauth/youtube/status")
+def youtube_oauth_status():
+    """Check if YouTube is connected."""
+    return {"connected": is_youtube_connected()}
+
+
+@app.post("/oauth/youtube/disconnect")
+def youtube_oauth_disconnect():
+    """Remove stored YouTube tokens."""
+    return disconnect_youtube()
+
+
+@app.get("/oauth/youtube/playlists")
+def youtube_playlists():
+    """List the user's YouTube playlists."""
+    return {"playlists": list_playlists()}
+
+
+@app.post("/publish")
+def publish_video(req: PublishRequest, background_tasks: BackgroundTasks):
+    """Start publishing to selected platforms."""
+    job = get_job(req.job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job {req.job_id} not found")
+    if job["status"] != "completed":
+        raise HTTPException(status_code=400, detail="Job not completed yet")
+
+    # Initialize publish status
+    publish_status = {}
+    for platform in req.platforms:
+        publish_status[platform] = {"status": "pending"}
+
+    update_job(req.job_id, publish=publish_status)
+
+    background_tasks.add_task(
+        _run_publish,
+        job_id=req.job_id,
+        job=job,
+        title=req.title,
+        description=req.description,
+        tags=req.tags,
+        privacy=req.privacy,
+        platforms=req.platforms,
+        video_type=req.video_type,
+        playlist=req.playlist,
+    )
+
+    return {"job_id": req.job_id, "publish": publish_status}
+
+
+@app.get("/publish/{job_id}/status")
+def publish_status(job_id: str):
+    """Get publish status for a job."""
+    job = get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    return {"job_id": job_id, "publish": job.get("publish")}
+
+
+def _run_publish(
+    job_id: str,
+    job: dict,
+    title: str,
+    description: str,
+    tags: str,
+    privacy: str,
+    platforms: list[str],
+    video_type: str = "shorts",
+    playlist: str = "",
+):
+    """Background task: upload to each selected platform."""
+    for platform in platforms:
+        try:
+            update_job(job_id, publish={
+                **get_job(job_id).get("publish", {}),
+                platform: {"status": "uploading"},
+            })
+
+            if platform == "youtube":
+                # Pick the best available video file
+                video_path = job.get("portrait_video") or job.get("landscape_video")
+                if not video_path:
+                    raise FileNotFoundError("No rendered video found")
+
+                result = upload_to_youtube(
+                    video_path=video_path,
+                    title=title,
+                    description=description,
+                    tags=tags,
+                    privacy=privacy,
+                    video_type=video_type,
+                    playlist=playlist,
+                )
+                update_job(job_id, publish={
+                    **get_job(job_id).get("publish", {}),
+                    platform: {"status": "completed", **result},
+                })
+            else:
+                update_job(job_id, publish={
+                    **get_job(job_id).get("publish", {}),
+                    platform: {"status": "unsupported", "error": f"{platform} coming soon"},
+                })
+
+        except Exception as e:
+            logger.error("Publish to %s failed: %s", platform, e)
+            update_job(job_id, publish={
+                **get_job(job_id).get("publish", {}),
+                platform: {"status": "failed", "error": str(e)},
+            })
 
 
 if __name__ == "__main__":

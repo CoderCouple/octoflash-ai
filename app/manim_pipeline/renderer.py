@@ -114,6 +114,7 @@ def render_job(
     voiceover: bool = True,
     source_video_id: str = "",
     manin_prompt: str = "",
+    _firebase_video_id: str = "",
 ) -> None:
     """Full render pipeline with fallback chain and iterative improvement.
 
@@ -276,13 +277,7 @@ def render_job(
                 manin_prompt=manin_prompt,
             )
 
-        # === STEP 5: Apply watermark (intro + outro branding) ===
-        if result.get("video_file") and Path(result["video_file"]).exists():
-            try:
-                res = "1080x1920" if portrait else "1920x1080"
-                _apply_watermark(Path(result["video_file"]), resolution=res)
-            except Exception as e:
-                logger.warning("Watermark application failed: %s", e)
+        # === STEP 5: Watermark is now baked into the Manim scene (see styles.py) ===
 
         # === STEP 6: Extract output frames for UI display ===
         if result.get("video_file") and Path(result["video_file"]).exists():
@@ -601,106 +596,69 @@ def _create_watermark_image(
 
 
 def _apply_watermark(video_path: Path, resolution: str = "1920x1080") -> Path:
-    """Prepend and append branded OCTOFLASH watermark clips to the video.
+    """Overlay a persistent ContextZeroAI watermark at the top of the video.
 
-    Creates 3-second intro and 3-second outro clips with big centered
-    "OCTOFLASH" text on black background, then concatenates them with
-    the main video. Returns path to the watermarked video (replaces original).
+    Uses ffmpeg's drawtext filter to render bold white text near the top
+    throughout the entire video duration. Replaces the original file.
     """
     width, height = [int(x) for x in resolution.split("x")]
     parent = video_path.parent
-    outro_img = parent / "_wm_outro.png"
-    outro_clip = parent / "_wm_outro.mp4"
-    concat_list = parent / "_wm_concat.txt"
     output_path = parent / f"wm_{video_path.name}"
 
+    # Find a system font that supports bold
+    font_paths = [
+        "/System/Library/Fonts/Supplemental/Verdana Bold.ttf",
+        "/System/Library/Fonts/Helvetica.ttc",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/Library/Fonts/Arial Bold.ttf",
+    ]
+    font_file = next((p for p in font_paths if Path(p).exists()), None)
+
+    # Scale: ~3.5% of height for font size, ~3% margin from top
+    fontsize = max(20, int(height * 0.035))
+    margin_y = max(12, int(height * 0.025))
+
+    # Build drawtext filter
+    text = "ContextZeroAI"
+    drawtext_parts = [
+        f"text='{text}'",
+        f"fontcolor=white",
+        f"fontsize={fontsize}",
+        f"x=(w-text_w)/2",
+        f"y={margin_y}",
+        f"shadowcolor=black@0.5",
+        f"shadowx=2",
+        f"shadowy=2",
+    ]
+    if font_file:
+        drawtext_parts.insert(1, f"fontfile='{font_file}'")
+    drawtext = "drawtext=" + ":".join(drawtext_parts)
+
     try:
-        # Create outro watermark image only (no intro — hook viewers immediately)
-        _create_watermark_image(width, height, "OCTOFLASH", "Like & Subscribe", outro_img)
-
-        # Convert image to 3-second video clip with fade in/out
-        for img_path, clip_path in [(outro_img, outro_clip)]:
-            subprocess.run(
-                ["ffmpeg", "-y",
-                 "-loop", "1", "-i", str(img_path),
-                 "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
-                 "-vf", "fade=t=in:st=0:d=0.8,fade=t=out:st=2.2:d=0.8",
-                 "-c:v", "libx264", "-pix_fmt", "yuv420p",
-                 "-c:a", "aac",
-                 "-t", "3", "-shortest",
-                 str(clip_path)],
-                capture_output=True, text=True, timeout=30,
-            )
-
-        if not outro_clip.exists():
-            logger.warning("Watermark clip creation failed, skipping watermark")
-            return video_path
-
-        # Ensure main video has audio track (manim videos usually don't)
-        main_with_audio = parent / "_wm_main.mp4"
-        probe = subprocess.run(
-            ["ffprobe", "-v", "quiet", "-select_streams", "a",
-             "-show_entries", "stream=codec_type", "-of", "csv=p=0",
-             str(video_path)],
-            capture_output=True, text=True, timeout=10,
-        )
-        if "audio" not in (probe.stdout or ""):
-            # Add silent audio track so concat works
-            subprocess.run(
-                ["ffmpeg", "-y", "-i", str(video_path),
-                 "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
-                 "-c:v", "copy", "-c:a", "aac", "-shortest",
-                 str(main_with_audio)],
-                capture_output=True, text=True, timeout=120,
-            )
-            if main_with_audio.exists():
-                video_path.unlink()
-                main_with_audio.rename(video_path)
-
-        # Write concat list — outro only (no intro, hook viewers immediately)
-        concat_list.write_text(
-            f"file '{video_path.resolve()}'\n"
-            f"file '{outro_clip.resolve()}'\n"
-        )
-
-        # Concatenate: intro + main + outro
         result = subprocess.run(
-            ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
-             "-i", str(concat_list),
-             "-c", "copy",
+            ["ffmpeg", "-y", "-i", str(video_path),
+             "-vf", drawtext,
+             "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "veryfast",
+             "-c:a", "copy",
              str(output_path)],
-            capture_output=True, text=True, timeout=120,
+            capture_output=True, text=True, timeout=300,
         )
 
         if result.returncode != 0:
-            # Re-encode if stream copy fails (codec/resolution mismatch)
-            logger.info("Concat copy failed, re-encoding...")
-            subprocess.run(
-                ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
-                 "-i", str(concat_list),
-                 "-c:v", "libx264", "-pix_fmt", "yuv420p",
-                 "-c:a", "aac",
-                 str(output_path)],
-                capture_output=True, text=True, timeout=300,
-            )
+            logger.warning("Watermark overlay failed (rc=%d): %s", result.returncode, result.stderr[-500:])
+            return video_path
 
         if output_path.exists() and output_path.stat().st_size > 0:
-            # Replace original with watermarked version
             video_path.unlink()
             output_path.rename(video_path)
-            logger.info("Watermark applied: %s", video_path)
+            logger.info("Persistent watermark applied: %s", video_path)
         else:
             logger.warning("Watermarked output missing, keeping original")
 
     except Exception as e:
         logger.warning("Watermark failed: %s — keeping original video", e)
-
-    finally:
-        # Clean up temp files
-        main_with_audio = parent / "_wm_main.mp4"
-        for f in [outro_img, outro_clip, concat_list, output_path, main_with_audio]:
-            if f.exists():
-                f.unlink(missing_ok=True)
+        if output_path.exists():
+            output_path.unlink(missing_ok=True)
 
     return video_path
 
