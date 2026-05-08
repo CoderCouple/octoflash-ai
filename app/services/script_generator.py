@@ -346,19 +346,22 @@ class ReLUExplainedScene(OctoflashScene):
 ## Screen Zones (NEVER overlap)
 
 ```
-y=4.0  ┌──────────────── TOP ZONE ─────────────────┐  title.to_edge(UP, buff=0.3)
+y=4.0  ┌──────── BRAND WATERMARK (RESERVED) ────────┐  auto-added by base scene — DO NOT touch
+y=3.6  └───────────────────────────────────────────────┘
+       ┌──────────────── TOP ZONE ─────────────────┐  title.to_edge(UP, buff=0.7)
 y=3.0  └───────────────────────────────────────────────┘
        ┌──────────────── MIDDLE ZONE ───────────────┐  content: axes, formulas, diagrams
 y=0.0  │              ORIGIN                        │  axes.shift(DOWN*0.4)
-       │                                            │  equations.shift(UP*1.8)
+       │                                            │  equations.shift(UP*1.5)
 y=-2.5 └───────────────────────────────────────────────┘
        ┌──────────────── BOTTOM ZONE ───────────────┐  caption.to_edge(DOWN, buff=0.4)
 y=-4.0 └───────────────────────────────────────────────┘
 ```
 
+- **Brand watermark**: a "ContextZeroAI" mark is auto-added at the very top by the base scene. NEVER place anything in the top 0.5 units. Use `buff=0.7` minimum on titles.
 - **Axes**: `x_length=7, y_length=3.0-3.5`, position with `.shift(DOWN*0.4)` — NEVER `.move_to(ORIGIN)` without shifting down
-- **Equations/formulas**: `.shift(UP*1.5)` to `.shift(UP*2.0)` — between title and axes
-- **Title**: ALWAYS `.to_edge(UP, buff=0.3)` — never place anything else here
+- **Equations/formulas**: `.shift(UP*1.3)` to `.shift(UP*1.8)` — between title and axes
+- **Title**: ALWAYS `.to_edge(UP, buff=0.7)` — leaves room for the brand watermark above
 - **Caption**: ALWAYS `.to_edge(DOWN, buff=0.4)` — update each voiceover block
 
 ## MANDATORY Content Ratio
@@ -493,16 +496,13 @@ Return ONLY a ```python``` code block. No explanations.
 
 SYSTEM_PROMPT_NO_VOICE = SYSTEM_PROMPT.replace(
     "OctoflashScene",
-    "Scene",
+    "OctoflashSceneNoVoice",
 ).replace(
-    "1. **Single class** inheriting `OctoflashScene`.",
-    "1. **Single class** inheriting `Scene`. Set `self.camera.background_color = BG_COLOR` at start of construct.",
+    "1. **Single class** inheriting `OctoflashSceneNoVoice`.",
+    "1. **Single class** inheriting `OctoflashSceneNoVoice` (NOT bare `Scene` — the OctoflashSceneNoVoice base sets the background AND adds the brand watermark at the top).",
 ).replace(
     "2. **Voiceover pattern**: wrap every group in `with self.voiceover(text=\"...\") as tracker:` → animate → `remaining = tracker.get_remaining_duration(buff=-0.3)` → wait.",
-    "2. **No voiceover**: do NOT use self.voiceover(). Use `self.wait(2)` after animations. Do NOT import OctoflashScene.",
-).replace(
-    "class ReLUExplainedScene(Scene):",
-    "class ReLUExplainedScene(Scene):\n    def construct(self):\n        self.camera.background_color = BG_COLOR",
+    "2. **No voiceover**: do NOT use self.voiceover(). Use `self.wait(2)` after animations.",
 ).replace(
     "with self.voiceover(text=",
     "# Narration: ",
@@ -1157,6 +1157,42 @@ def sanitize_script(code: str) -> str:
                 '    ' + ', '.join(used_ml) + ',\n'
                 ')\n'
             ) + code
+
+    # ── CRITICAL: Push titles below the brand watermark zone ──
+    # Any to_edge(UP, buff<0.6) collides with the watermark. Force buff=0.7 minimum.
+    _prev = code
+    code = re.sub(
+        r'\.to_edge\(\s*UP\s*,\s*buff\s*=\s*(0?\.[0-5]\d*|0?\.6)\s*\)',
+        '.to_edge(UP, buff=0.7)',
+        code,
+    )
+    code = _track("push titles below watermark zone", _prev, code)
+
+    # ── CRITICAL: Convert bare `Scene` to OctoflashSceneNoVoice so watermark always shows ──
+    # If the script doesn't already inherit OctoflashScene/3DScene/NoVoice, force the no-voice base.
+    if not re.search(r'class\s+\w+\s*\(\s*Octoflash(Scene|3DScene|SceneNoVoice)\s*\)', code):
+        prev = code
+        code = re.sub(
+            r'class\s+(\w+)\s*\(\s*Scene\s*\)',
+            r'class \1(OctoflashSceneNoVoice)',
+            code,
+        )
+        if code != prev:
+            # Ensure the import is present
+            if 'OctoflashSceneNoVoice' not in (re.search(r'from app\.manim_pipeline\.styles import[^\)]*', code) or [None])[0] if re.search(r'from app\.manim_pipeline\.styles import[^\)]*', code) else False:
+                pass
+            if 'OctoflashSceneNoVoice' not in code.split('class ')[0]:
+                # Inject import at the top of the styles import block
+                if re.search(r'from app\.manim_pipeline\.styles import \(', code):
+                    code = re.sub(
+                        r'(from app\.manim_pipeline\.styles import \()',
+                        r'\1\n    OctoflashSceneNoVoice,',
+                        code,
+                        count=1,
+                    )
+                else:
+                    code = "from app.manim_pipeline.styles import OctoflashSceneNoVoice\n" + code
+            fixes_applied.append("Scene→OctoflashSceneNoVoice (for watermark)")
 
     # ── CRITICAL: manimgl → Manim CE name fixes ──
     _prev = code

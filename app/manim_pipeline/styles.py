@@ -98,7 +98,7 @@ def make_contextzero_logo(radius: float = 0.22) -> VGroup:
     # Half-disc (right hemisphere) forms the D shape
     d_radius = radius - ring_thickness - inner_gap
     d_shape = Sector(
-        outer_radius=d_radius,
+        radius=d_radius,
         angle=PI,
         start_angle=-PI / 2,
         color=TEXT_PRIMARY,
@@ -109,13 +109,15 @@ def make_contextzero_logo(radius: float = 0.22) -> VGroup:
 
 
 def make_brand_watermark() -> VGroup:
-    """Top-of-frame brand watermark: ContextZero logo + 'ContextZeroAI' text."""
-    logo = make_contextzero_logo(radius=0.22)
-    text = Text("ContextZeroAI", font_size=22, color=TEXT_PRIMARY, weight="BOLD")
-    text.next_to(logo, RIGHT, buff=0.18)
+    """Top-of-frame brand watermark: ContextZero logo + 'ContextZeroAI' text.
+
+    Sits at the very top edge so titles using to_edge(UP, buff>=0.7) won't overlap.
+    """
+    logo = make_contextzero_logo(radius=0.15)
+    text = Text("ContextZeroAI", font_size=18, color=TEXT_PRIMARY, weight="BOLD")
+    text.next_to(logo, RIGHT, buff=0.12)
     group = VGroup(logo, text)
-    # Position near top-center with margin from the top edge
-    group.to_edge(UP, buff=0.25)
+    group.to_edge(UP, buff=0.08)
     return group
 
 

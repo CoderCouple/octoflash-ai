@@ -30,6 +30,18 @@ from app.services.youtube_uploader import (
     get_youtube_auth_url, handle_youtube_callback, is_youtube_connected,
     upload_to_youtube, disconnect_youtube, list_playlists,
 )
+from app.services.linkedin_uploader import (
+    get_linkedin_auth_url, handle_linkedin_callback, is_linkedin_connected,
+    upload_to_linkedin, disconnect_linkedin,
+)
+from app.services.tiktok_uploader import (
+    get_tiktok_auth_url, handle_tiktok_callback, is_tiktok_connected,
+    upload_to_tiktok, disconnect_tiktok,
+)
+from app.services.instagram_uploader import (
+    get_instagram_auth_url, handle_instagram_callback, is_instagram_connected,
+    upload_to_instagram, disconnect_instagram,
+)
 from app.services.video_manager import (
     create_video, get_video, update_video, list_videos,
 )
@@ -701,6 +713,92 @@ def youtube_playlists():
     return {"playlists": list_playlists()}
 
 
+# ── LinkedIn / TikTok / Instagram OAuth ─────────────────────────────────
+
+_PLATFORMS = {
+    "linkedin": {
+        "auth": get_linkedin_auth_url,
+        "callback": handle_linkedin_callback,
+        "status": is_linkedin_connected,
+        "disconnect": disconnect_linkedin,
+        "label": "LinkedIn",
+    },
+    "tiktok": {
+        "auth": get_tiktok_auth_url,
+        "callback": handle_tiktok_callback,
+        "status": is_tiktok_connected,
+        "disconnect": disconnect_tiktok,
+        "label": "TikTok",
+    },
+    "instagram": {
+        "auth": get_instagram_auth_url,
+        "callback": handle_instagram_callback,
+        "status": is_instagram_connected,
+        "disconnect": disconnect_instagram,
+        "label": "Instagram",
+    },
+}
+
+
+@app.get("/oauth/{platform}/start")
+def platform_oauth_start(platform: str):
+    cfg = _PLATFORMS.get(platform)
+    if cfg is None:
+        raise HTTPException(status_code=404, detail=f"Unknown platform: {platform}")
+    try:
+        return {"auth_url": cfg["auth"]()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/oauth/{platform}/callback")
+def platform_oauth_callback(platform: str, code: str = Query(...)):
+    from fastapi.responses import HTMLResponse
+    cfg = _PLATFORMS.get(platform)
+    if cfg is None:
+        raise HTTPException(status_code=404, detail=f"Unknown platform: {platform}")
+    try:
+        cfg["callback"](code)
+        label = cfg["label"]
+        return HTMLResponse(f"""
+        <html><body style="font-family:Inter,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;background:#f8f9fb;">
+        <div style="text-align:center;">
+            <h2 style="color:#16a34a;">Connected!</h2>
+            <p style="color:#6b7280;">{label} account linked. You can close this window.</p>
+        </div>
+        <script>
+            if (window.opener) {{ window.opener.postMessage({{type: '{platform}-connected'}}, '*'); }}
+            setTimeout(() => window.close(), 1500);
+        </script>
+        </body></html>
+        """)
+    except Exception as e:
+        return HTMLResponse(f"""
+        <html><body style="font-family:Inter,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;background:#f8f9fb;">
+        <div style="text-align:center;">
+            <h2 style="color:#dc2626;">Connection Failed</h2>
+            <p style="color:#6b7280;">{e}</p>
+        </div>
+        </body></html>
+        """, status_code=400)
+
+
+@app.get("/oauth/{platform}/status")
+def platform_oauth_status(platform: str):
+    cfg = _PLATFORMS.get(platform)
+    if cfg is None:
+        raise HTTPException(status_code=404, detail=f"Unknown platform: {platform}")
+    return {"connected": cfg["status"]()}
+
+
+@app.post("/oauth/{platform}/disconnect")
+def platform_oauth_disconnect(platform: str):
+    cfg = _PLATFORMS.get(platform)
+    if cfg is None:
+        raise HTTPException(status_code=404, detail=f"Unknown platform: {platform}")
+    return cfg["disconnect"]()
+
+
 @app.post("/publish")
 def publish_video(req: PublishRequest, background_tasks: BackgroundTasks):
     """Start publishing to selected platforms."""
@@ -761,30 +859,44 @@ def _run_publish(
                 platform: {"status": "uploading"},
             })
 
-            if platform == "youtube":
-                # Pick the best available video file
-                video_path = job.get("portrait_video") or job.get("landscape_video")
-                if not video_path:
-                    raise FileNotFoundError("No rendered video found")
+            video_path = job.get("portrait_video") or job.get("landscape_video")
+            if not video_path:
+                raise FileNotFoundError("No rendered video found")
 
+            if platform == "youtube":
                 result = upload_to_youtube(
-                    video_path=video_path,
-                    title=title,
-                    description=description,
-                    tags=tags,
-                    privacy=privacy,
-                    video_type=video_type,
-                    playlist=playlist,
+                    video_path=video_path, title=title, description=description,
+                    tags=tags, privacy=privacy, video_type=video_type, playlist=playlist,
                 )
-                update_job(job_id, publish={
-                    **get_job(job_id).get("publish", {}),
-                    platform: {"status": "completed", **result},
-                })
+            elif platform == "linkedin":
+                result = upload_to_linkedin(
+                    video_path=video_path, title=title, description=description,
+                )
+            elif platform == "tiktok":
+                # TikTok sandbox apps must use SELF_ONLY privacy
+                tt_privacy = "PUBLIC_TO_EVERYONE" if privacy == "public" else "SELF_ONLY"
+                result = upload_to_tiktok(
+                    video_path=video_path, title=title, description=description,
+                    privacy=tt_privacy,
+                )
+            elif platform == "instagram":
+                # Instagram needs a public URL; expect caller to provide it
+                public_url = job.get("public_video_url", "")
+                result = upload_to_instagram(
+                    video_path=video_path, title=title, description=description,
+                    public_video_url=public_url,
+                )
             else:
                 update_job(job_id, publish={
                     **get_job(job_id).get("publish", {}),
-                    platform: {"status": "unsupported", "error": f"{platform} coming soon"},
+                    platform: {"status": "unsupported", "error": f"{platform} not implemented"},
                 })
+                continue
+
+            update_job(job_id, publish={
+                **get_job(job_id).get("publish", {}),
+                platform: {"status": "completed", **result},
+            })
 
         except Exception as e:
             logger.error("Publish to %s failed: %s", platform, e)

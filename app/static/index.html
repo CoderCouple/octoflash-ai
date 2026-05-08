@@ -1397,29 +1397,29 @@
                     <button class="connect-btn" id="ytConnectBtn" onclick="connectYouTube()">Connect</button>
                   </div>
                 </div>
-                <div class="platform-item disabled">
+                <div class="platform-item" id="platformTiktok">
                   <div class="platform-icon" style="background:#000;color:#fff;">T</div>
                   <div class="platform-info">
                     <div class="platform-name">TikTok</div>
-                    <div class="platform-status">Requires developer app approval</div>
+                    <div class="platform-status" id="tiktokConnectStatus">Checking...</div>
                   </div>
-                  <span class="coming-soon-badge">Coming Soon</span>
+                  <div id="tiktokConnectActions"></div>
                 </div>
-                <div class="platform-item disabled">
+                <div class="platform-item" id="platformInstagram">
                   <div class="platform-icon" style="background:linear-gradient(45deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888);color:#fff;">I</div>
                   <div class="platform-info">
                     <div class="platform-name">Instagram</div>
-                    <div class="platform-status">Requires developer app approval</div>
+                    <div class="platform-status" id="instagramConnectStatus">Checking...</div>
                   </div>
-                  <span class="coming-soon-badge">Coming Soon</span>
+                  <div id="instagramConnectActions"></div>
                 </div>
-                <div class="platform-item disabled">
+                <div class="platform-item" id="platformLinkedin">
                   <div class="platform-icon" style="background:#0a66c2;color:#fff;">in</div>
                   <div class="platform-info">
                     <div class="platform-name">LinkedIn</div>
-                    <div class="platform-status">Requires developer app approval</div>
+                    <div class="platform-status" id="linkedinConnectStatus">Checking...</div>
                   </div>
-                  <span class="coming-soon-badge">Coming Soon</span>
+                  <div id="linkedinConnectActions"></div>
                 </div>
               </div>
             </div>
@@ -2692,35 +2692,67 @@
       document.getElementById('pubSubmitBtn').disabled = true;
       document.getElementById('pubSubmitBtn').textContent = 'Publish to YouTube';
 
-      checkYouTubeStatus();
+      checkAllPlatformStatuses();
     }
 
     async function checkYouTubeStatus() {
-      const statusEl = document.getElementById('ytConnectStatus');
-      const actionsEl = document.getElementById('ytConnectActions');
+      await checkPlatformStatus('youtube');
+      // refresh playlists if connected
+      if (window._platformConnected?.youtube) fetchPlaylists();
+    }
+
+    window._platformConnected = { youtube: false, linkedin: false, tiktok: false, instagram: false };
+
+    async function checkPlatformStatus(platform) {
+      const statusEl = document.getElementById(`${platform === 'youtube' ? 'yt' : platform}ConnectStatus`);
+      const actionsEl = document.getElementById(`${platform === 'youtube' ? 'yt' : platform}ConnectActions`);
       const submitBtn = document.getElementById('pubSubmitBtn');
-
       try {
-        const res = await fetch(API_BASE + '/oauth/youtube/status');
+        const res = await fetch(API_BASE + `/oauth/${platform}/status`);
         const data = await res.json();
-        ytConnected = data.connected;
+        window._platformConnected[platform] = data.connected;
+        if (platform === 'youtube') ytConnected = data.connected;
 
-        if (ytConnected) {
-          statusEl.textContent = 'Connected';
-          statusEl.className = 'platform-status connected';
-          actionsEl.innerHTML = '<button class="connect-btn connected-btn">Connected</button><button class="disconnect-btn" onclick="disconnectYouTube()">Disconnect</button>';
-          submitBtn.disabled = false;
-          fetchPlaylists();
+        if (data.connected) {
+          if (statusEl) { statusEl.textContent = 'Connected'; statusEl.className = 'platform-status connected'; }
+          if (actionsEl) actionsEl.innerHTML = `<button class="connect-btn connected-btn">Connected</button><button class="disconnect-btn" onclick="disconnectPlatform('${platform}')">Disconnect</button>`;
         } else {
-          statusEl.textContent = 'Not connected';
-          statusEl.className = 'platform-status';
-          actionsEl.innerHTML = '<button class="connect-btn" onclick="connectYouTube()">Connect</button>';
-          submitBtn.disabled = true;
+          if (statusEl) { statusEl.textContent = 'Not connected'; statusEl.className = 'platform-status'; }
+          if (actionsEl) actionsEl.innerHTML = `<button class="connect-btn" onclick="connectPlatform('${platform}')">Connect</button>`;
         }
+        // Submit button enabled if at least YouTube is connected (legacy behaviour)
+        if (submitBtn) submitBtn.disabled = !window._platformConnected.youtube;
       } catch (err) {
-        statusEl.textContent = 'Could not check status';
-        statusEl.className = 'platform-status';
+        if (statusEl) { statusEl.textContent = 'Status unavailable'; statusEl.className = 'platform-status'; }
       }
+    }
+
+    function checkAllPlatformStatuses() {
+      ['youtube', 'linkedin', 'tiktok', 'instagram'].forEach(checkPlatformStatus);
+    }
+
+    function connectPlatform(platform) {
+      fetch(API_BASE + `/oauth/${platform}/start`)
+        .then(r => r.json())
+        .then(data => {
+          if (!data.auth_url) throw new Error(data.detail || 'OAuth not configured for this platform');
+          window.open(data.auth_url, `${platform}-oauth`, 'width=600,height=700');
+          window.addEventListener('message', function handler(e) {
+            if (e.data && e.data.type === `${platform}-connected`) {
+              window.removeEventListener('message', handler);
+              checkPlatformStatus(platform);
+              if (platform === 'youtube') fetchPlaylists();
+            }
+          });
+        })
+        .catch(err => alert(`Failed to connect ${platform}: ` + err.message));
+    }
+
+    async function disconnectPlatform(platform) {
+      try {
+        await fetch(API_BASE + `/oauth/${platform}/disconnect`, { method: 'POST' });
+        checkPlatformStatus(platform);
+      } catch (err) { console.warn('Disconnect error:', err); }
     }
 
     async function fetchPlaylists() {
@@ -2743,33 +2775,8 @@
       }
     }
 
-    function connectYouTube() {
-      fetch(API_BASE + '/oauth/youtube/start')
-        .then(r => r.json())
-        .then(data => {
-          const popup = window.open(data.auth_url, 'youtube-oauth', 'width=600,height=700');
-          // Listen for postMessage from callback page
-          window.addEventListener('message', function handler(e) {
-            if (e.data && e.data.type === 'youtube-connected') {
-              window.removeEventListener('message', handler);
-              checkYouTubeStatus();
-            }
-          });
-        })
-        .catch(err => {
-          alert('Failed to start YouTube connection: ' + err.message);
-        });
-    }
-
-    async function disconnectYouTube() {
-      try {
-        await fetch(API_BASE + '/oauth/youtube/disconnect', { method: 'POST' });
-        ytConnected = false;
-        checkYouTubeStatus();
-      } catch (err) {
-        console.warn('Disconnect error:', err);
-      }
-    }
+    function connectYouTube() { connectPlatform('youtube'); }
+    async function disconnectYouTube() { await disconnectPlatform('youtube'); }
 
     async function submitPublish() {
       if (!currentJobId) {
@@ -2780,10 +2787,19 @@
       const submitBtn = document.getElementById('pubSubmitBtn');
       const result = document.getElementById('pubResult');
 
+      // Collect all platforms that are currently connected
+      const connectedPlatforms = Object.entries(window._platformConnected || {})
+        .filter(([_, ok]) => ok).map(([p]) => p);
+
+      if (!connectedPlatforms.length) {
+        alert('Connect at least one platform first');
+        return;
+      }
+
       submitBtn.disabled = true;
       submitBtn.textContent = 'Publishing...';
       result.className = 'publish-result uploading';
-      result.textContent = 'Uploading to YouTube...';
+      result.textContent = `Uploading to ${connectedPlatforms.join(', ')}...`;
 
       try {
         const res = await fetch(API_BASE + '/publish', {
@@ -2794,7 +2810,7 @@
             title: document.getElementById('pubTitle').value,
             description: document.getElementById('pubDescription').value,
             tags: document.getElementById('pubTags').value,
-            platforms: ['youtube'],
+            platforms: connectedPlatforms,
             privacy: document.getElementById('pubPrivacy').value,
             video_type: document.getElementById('pubVideoType').value,
             playlist: document.getElementById('pubPlaylist').value === '__new__'
