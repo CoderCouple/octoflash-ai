@@ -303,6 +303,9 @@ def api_trigger_generate(video_id: str, background_tasks: BackgroundTasks):
     job_id = uuid.uuid4().hex[:12]
     update_video(video_id, status="generating", job_id=job_id, error=None)
 
+    # Use user-set target_duration if present, else fall back to source duration
+    effective_duration = video.get("target_duration") or video.get("duration_seconds", 60.0)
+
     from app.services.auto_processor import _run_generation
     background_tasks.add_task(
         _run_generation,
@@ -311,7 +314,7 @@ def api_trigger_generate(video_id: str, background_tasks: BackgroundTasks):
         analysis={
             "transcript": video.get("transcript", ""),
             "description": video.get("description", ""),
-            "duration_seconds": video.get("duration_seconds", 60.0),
+            "duration_seconds": effective_duration,
             "manin_prompt": video.get("manin_prompt", ""),
             "frames": video.get("frame_paths", []),
         },

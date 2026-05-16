@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 STORAGE_DIR = Path(__file__).resolve().parent.parent.parent / "storage"
 
-CLAUDE_MODEL = "claude-sonnet-4-20250514"
+CLAUDE_MODEL = "claude-opus-4-7"
 
 SYSTEM_PROMPT = r"""You are an expert Manim Community Edition animator. You produce 3Blue1Brown-quality educational animations — NOT text slides. Every scene MUST have Axes/graphs, MathTex formulas, animated diagrams, and dynamic ValueTracker animations.
 
@@ -478,7 +478,11 @@ self.play(FadeOut(prev_rects), FadeIn(area), run_time=1.5)
 3. **Cleanup every section**: `self.play(FadeOut(VGroup(...)))` before building next section. NEVER leave stale objects.
 4. **White text only**: all Text/MathTex is WHITE. Color ONLY for graph lines, highlights, MCQ correct answer.
 5. **Axes sizing**: `x_length=7, y_length=3.0-3.5`. Position `.shift(DOWN*0.4)`. NEVER let axes touch the title or caption zone.
-6. **Duration**: The rendered video MUST be close to the target duration. Use SHORT run_times: `run_time=0.5` for FadeIn/FadeOut, `run_time=1` for Create/Write, `run_time=2` max for sweeps. Keep `self.wait()` calls to 0.5-1s. Do NOT add long pauses. Limit to 4-6 voiceover sections MAX. Each section should be 8-15 seconds, not 30+.
+6. **Duration**: The rendered video MUST be close to the target duration (the duration value in the user prompt). Scale the number of sections to the target:
+   - ≤60s → 3-5 sections × 10-15s each
+   - 90-120s → 6-9 sections × 12-18s each
+   - 180-300s → 10-15 sections × 15-25s each
+   Each section needs distinct visuals (different axes/diagrams/equations). Use SHORT run_times: `run_time=0.5` for FadeIn/FadeOut, `run_time=1` for Create/Write, `run_time=2` max for sweeps. Keep `self.wait()` calls to 0.5-1s. Do NOT pad with long pauses — instead, add MORE content sections.
 7. **Title text**: Long titles MUST be split into 2 lines or use `font_size=36`. Never exceed 40 characters per line. Use `\n` to wrap.
 8. **Valid Python**: No `ShowCreation` (use `Create`), no `get_graph()` (use `axes.plot()`), no `max()` in lambdas (use `np.maximum()`), no `math.sin` (use `np.sin`). `axes.get_coordinate_labels()` takes NO keyword arguments (no font_size, no color). `LaggedStartMap` takes (AnimClass, group, **kwargs) — do NOT pass direction constants like LEFT as positional args.
 9. **2D only**: No ThreeDAxes, Surface, ThreeDScene, move_camera, set_camera_orientation.

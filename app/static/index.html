@@ -1308,6 +1308,17 @@
               <option value="false">No</option>
             </select>
           </div>
+          <div class="input-group">
+            <label>Length</label>
+            <select id="genTargetDuration">
+              <option value="">Match source</option>
+              <option value="60">60s (short)</option>
+              <option value="90">90s</option>
+              <option value="120" selected>120s (2 min)</option>
+              <option value="180">180s (3 min)</option>
+              <option value="300">300s (5 min)</option>
+            </select>
+          </div>
         </div>
         <div style="display:flex; gap:8px;">
           <button type="button" id="generateBtn" class="btn-primary btn-generate" onclick="startGenerate()" style="flex:1; width:auto;">Generate Video</button>
@@ -2108,6 +2119,7 @@
         if (data.orientation) document.getElementById('genOrientation').value = data.orientation;
         if (data.quality) document.getElementById('genQuality').value = data.quality;
         if (data.voiceover !== undefined) document.getElementById('genVoiceover').value = data.voiceover ? 'true' : 'false';
+        if (data.target_duration) document.getElementById('genTargetDuration').value = String(Math.round(data.target_duration));
         document.getElementById('editSection').style.display = 'block';
       }
 
@@ -2138,6 +2150,18 @@
           fetchScript(data.job_id);
           fetchOutputFrames(data.job_id);
           showPublishSection();
+          // Rehydrate publish-success message if already published
+          if (data.youtube_published_url) {
+            const pubResult = document.getElementById('pubResult');
+            pubResult.className = 'publish-result success';
+            pubResult.innerHTML = '✓ Published to YouTube! <a href="' + data.youtube_published_url + '" target="_blank">Open video ↗</a>';
+            const pubBtn = document.getElementById('pubSubmitBtn');
+            if (pubBtn) { pubBtn.textContent = 'Published!'; pubBtn.disabled = true; }
+            // Expand the publish edit phase so the message is visible
+            document.getElementById('pubPreviewPhase').style.display = 'none';
+            document.getElementById('pubEditPhase').style.display = 'block';
+          }
+
           // Rehydrate YouTube metadata if previously generated (survives page refresh)
           if (data.youtube_title || data.youtube_description || data.youtube_tags) {
             const ytSection = document.getElementById('ytMetadataSection');
@@ -2365,14 +2389,18 @@
         const orientation = document.getElementById('genOrientation').value;
         const quality = document.getElementById('genQuality').value;
         const voiceover = document.getElementById('genVoiceover').value === 'true';
+        const targetDurationStr = document.getElementById('genTargetDuration').value;
+        const target_duration = targetDurationStr ? parseFloat(targetDurationStr) : null;
 
         // Sync edits to Firebase if we have a video ID
         const fbVideoId = window._currentFirebaseVideoId;
         if (fbVideoId) {
+          const patchBody = { transcript, description, manin_prompt: manimPrompt, title, orientation, quality, voiceover };
+          if (target_duration) patchBody.target_duration = target_duration;
           await fetch(API_BASE + `/api/videos/${fbVideoId}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ transcript, description, manin_prompt: manimPrompt, title, orientation, quality, voiceover }),
+            body: JSON.stringify(patchBody),
           }).catch(err => console.warn('Firebase sync failed:', err));
         }
 
@@ -2407,12 +2435,13 @@
           if (!genRes.ok) throw new Error(genData.detail || 'Generate request failed');
           // job_id comes from the response
         } else {
+          const effectiveDuration = target_duration || analysisData.duration_seconds;
           const genRes = await fetch(API_BASE + '/generate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               video_id: analysisData.video_id,
-              transcript, description, duration: analysisData.duration_seconds,
+              transcript, description, duration: effectiveDuration,
               title, orientation, quality, voiceover,
               manin_prompt: manimPrompt,
             }),
@@ -2892,8 +2921,23 @@
             setTimeout(poll, 3000);
           } else if (ytStatus.status === 'completed') {
             result.className = 'publish-result success';
-            result.innerHTML = 'Published! <a href="' + ytStatus.url + '" target="_blank">View on YouTube</a>';
+            result.innerHTML = '✓ Published to YouTube! <a href="' + ytStatus.url + '" target="_blank">Open video ↗</a>';
             submitBtn.textContent = 'Published!';
+            submitBtn.disabled = true;
+            result.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+            // Persist publish state to Firebase so it survives page refresh
+            const fbId = window._currentFirebaseVideoId;
+            if (fbId) {
+              fetch(API_BASE + `/api/videos/${fbId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  youtube_published_url: ytStatus.url,
+                  youtube_published_id: ytStatus.video_id,
+                }),
+              }).catch(() => {});
+            }
           } else if (ytStatus.status === 'failed') {
             result.className = 'publish-result error';
             result.textContent = 'Failed: ' + (ytStatus.error || 'Unknown error');

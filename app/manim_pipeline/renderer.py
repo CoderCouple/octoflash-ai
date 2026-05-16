@@ -188,6 +188,33 @@ def render_job(
                 logger.error("ATTEMPT 1 FAILED (claude+voice): %s", str(e)[:1000])
                 logger.error("  Full error type: %s", type(e).__name__)
 
+        # Attempt 1b: Voice was requested but Attempt 1 failed — generate a FRESH voice script and retry
+        # (Don't fall straight to no-voice; user explicitly wanted voiceover)
+        if result is None and voiceover:
+            try:
+                logger.info("=" * 60)
+                logger.info("ATTEMPT 1b: Generating FRESH voiceover script from Claude (retry)")
+                fresh_voice = generate_episode_script(
+                    transcript=transcript,
+                    description=description,
+                    duration=duration,
+                    title=title,
+                    video_id=job_id,
+                    voiceover=True,
+                    source_frames=source_frame_paths,
+                    manin_prompt=manin_prompt,
+                    feedback="Previous attempt crashed at render. Generate simpler, defensive code. Keep voiceover blocks.",
+                )
+                logger.info("  Fresh voice script: %d chars", len(fresh_voice))
+                validate_scene_code(fresh_voice)
+                result = render_scene(job_id, fresh_voice, quality=quality, portrait=portrait)
+                scene_code = fresh_voice
+                render_method = "claude-fresh-voice"
+                script_file_path = save_script(job_id, fresh_voice)
+                logger.info("ATTEMPT 1b SUCCEEDED: claude-fresh-voice")
+            except Exception as e:
+                logger.error("ATTEMPT 1b FAILED (claude-fresh-voice): %s", str(e)[:1000])
+
         # Attempt 2: Strip voiceover from Claude script (keep rich animations)
         if result is None and claude_code:
             try:
@@ -299,6 +326,7 @@ def render_job(
             job_id,
             status="completed",
             completed_at=datetime.now(timezone.utc).isoformat(),
+            render_method=render_method,
             **{video_key: result.get("video_file")},
         )
 

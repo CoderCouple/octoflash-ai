@@ -79,6 +79,9 @@ class VideoUpdateRequest(BaseModel):
     youtube_title: str | None = None
     youtube_description: str | None = None
     youtube_tags: str | None = None
+    youtube_published_url: str | None = None
+    youtube_published_id: str | None = None
+    target_duration: float | None = None
 
 
 class ChannelRequest(BaseModel):

@@ -86,7 +86,7 @@ def _sync_to_firebase(video_id: str, **fields):
             sync_fields["status"] = "failed"
 
         # Forward relevant fields
-        for key in ["error", "landscape_video", "portrait_video", "scene_file", "script_file", "job_id"]:
+        for key in ["error", "landscape_video", "portrait_video", "scene_file", "script_file", "job_id", "render_method"]:
             if key in fields:
                 sync_fields[key] = fields[key]
 

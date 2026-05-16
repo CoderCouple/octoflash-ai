@@ -15,7 +15,7 @@ load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
 
 logger = logging.getLogger(__name__)
 
-CLAUDE_MODEL = "claude-sonnet-4-20250514"
+CLAUDE_MODEL = "claude-opus-4-7"
 
 SYSTEM_PROMPT = """You are a YouTube metadata expert for educational AI/tech channels.
 Given a video transcript, generate optimized YouTube metadata.
@@ -88,15 +88,27 @@ def generate_youtube_metadata(
         f"Generate YouTube metadata for this educational video."
     )
 
-    response = client.messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=1024,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_msg}],
-    )
-
-    raw = response.content[0].text
-    return _parse_metadata(raw, title_hint)
+    try:
+        response = client.messages.create(
+            model=CLAUDE_MODEL,
+            max_tokens=1024,
+            system=SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_msg}],
+        )
+        raw = response.content[0].text
+        logger.info("YouTube metadata raw response (%d chars): %s", len(raw), raw[:200])
+        return _parse_metadata(raw, title_hint)
+    except Exception as e:
+        logger.exception("YouTube metadata generation failed: %s", e)
+        # Fallback: return minimal valid metadata so the publish flow can proceed
+        return {
+            "title": (title_hint or "Educational Video")[:70],
+            "description": (transcript[:500] + "\n\n" + HASHTAGS + DESCRIPTION_FOOTER).strip(),
+            "tags": ", ".join(BASE_TAGS),
+            "hook": "",
+            "points": [],
+            "topic_line": "",
+        }
 
 
 def _parse_metadata(raw: str, title_hint: str = "") -> dict:
